@@ -98,4 +98,5 @@ ENV/
 *.blg
 *.run.xml
 *.pdf
+*.log
 

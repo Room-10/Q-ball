@@ -1,0 +1,48 @@
+
+\subsection{Preprocessed W1-TV restoration (SSVM 2017)}
+
+In our SSVM paper, we used the following variational approach,
+\[
+    \inf_{u:\Omega \to \IP(\IS^2)}
+        \int_\Omega W_1(f_x,u_x) \dd x + \lambda \TV_{W_1}(u),
+\]
+to restore the ODF $u$ from the result $f$ of the voxel by voxel reconstruction
+based on (Aganj, 2010).\\
+
+\vspace{1cm}
+\hspace{1cm}\vdots~~ Describe $\TV_{W_1}$ and $W_1$ etc. ~~\vdots
+\vspace{1cm}
+
+Alternatively, you could do a spherical regularization by assuming that your
+minimizer has a spherical harmonics representation $v = (c_j)_{j \in \IN}$
+such that $u = \Psi v = \sum_j c_j Y_j$ (i.~e. $\Psi$ is the spherical harmonics
+sampling operator):
+\[
+    \inf_{v \in \IR^\IN}
+        \int_\Omega W_1(f_x, (\Psi v)_x) \dd x + \lambda \TV_{W_1}((\Psi v)),
+\]
+
+\subsection{Direct W1-TV reconstruction}
+
+Actually, the input $f$ in the above approach was not directly the output of
+(Aganj, 2010) since $f$ was only sampled on a triangulation of the sphere
+whereas the reconstruction scheme returns a spherical harmonics representation.
+However, it was not directly possible to use the spherical harmonics
+representation because the Kantorovich-Rubinstein formulation of the
+Wasserstein metric involves a derivative constraint on the sphere that cannot
+be written in spherical harmonics equally well.
+Our new approach combines HARDI fitting with the new spatial regularizer
+\[
+    \inf_{v \in \IR^\IN}
+        \| \Psi A^{-1}v - F \|_{L^2}^2 + \lambda \TV_{W_1}(\Psi v),
+\]
+where $F(x) := \log(-\log\tilde E(x))$ and $A$ is the diagonal operator involving
+the eigenvalues with respect to $\FRT$ and $\Delta_b$.
+
+In a next stept we will replace the data term by bounds derived from
+confidence intervals:
+\[
+    \inf_{v \in \IR^\IN}
+        \| (\Psi A^{-1}v - F^u)_+ \|_{L^1}  + \| (F^l - \Psi A^{-1}v)_+ \|_{L^1}
+        + \lambda \TV_{W_1}(\Psi v).
+\]

@@ -1,0 +1,121 @@
+
+\section{Prerequisites}
+
+\subsection{Notation and variables involved}
+
+We assume a $d$-dimensional image domain $\Omega$ that is discretized using
+$n$ points $x^1, \dots, x^n \in \Omega$.
+Differentiation in $\Omega$ is done on a staggered grid with Neumann boundary
+conditions such that the dual operator to the differential operator $D$ is the
+negative divergence with vanishing boundary values.
+We assume that the image takes values in the space of probability measures on
+the two-dimensional sphere $\IS^2$, which is triangulated using $l$ points
+$z^1, \dots, z^l \in \IS^2$. 
+
+Integration on $\Omega \times \IS^2$ is discretized as
+\begin{equation}\label{eq:discrete-int}
+    \langle u, v \rangle_b := \sum_{i,k} b_{k} u_k^i v_k^i
+    \vspace{-7.5pt}
+\end{equation}
+whenever $u,v \in \IR^{n,l}$ are the discretizations of functions on
+$\Omega \times \IS^2$, i.\,e. $u_k^i \approx u(x^i,z^k)$.
+Equation \eqref{eq:discrete-int} assumes uniform spacing of the $x^i \in \Omega$,
+but makes use of a weight vector $b \in \IR^l$ to account for the volume element
+at each $z^k \in \IS^2$.
+
+Gradients of functions on $\IS^2$ are defined on a staggered grid of $m$ points
+$y^1, \dots, y^m \in \IS^2$ such that each $y^j$ has $3$ neighboring points $
+    \nbhd_j \subset \{1, \dots, l\}$, $\#\nbhd_j = 3,
+$ among the $z^k$.
+The corresponding tangent vectors
+\begin{equation}
+    v^{j,k} := \exp^{-1}_{y_j}(z^k) \in T_{y_j}\IS^2,
+\end{equation}
+pointing from $y^j$ in the direction of $z^k$, $k \in \nbhd_j$, are encoded in
+the matrix $M^j \in \IR^{3,s}$ such that $
+    \langle v^{j,k}, v \rangle = (M^j v)_k
+$, whenever $v \in \IR^2 \cong T_{y_j}\IS^2$.
+
+We regard the gradient $g \in \IR^{m,2}$ of a function $p \in \IR^{l}$ on $\IS^2$
+as the vector in the tangent space that allows for the best pointwise
+approximation of $p$ in an $l^2$-sense:
+\begin{equation}\label{eq:approx-grad-on-M}
+    g^j = \argmin_{v \in \IR^2} \min_{c \in \IR} \sum_{k \in \nbhd_j} (
+        c + \langle v^{j,k}, v \rangle - p^k
+    )^2.
+\end{equation}
+The variable $c$ replaces the value of $p$ at $y^j$ which is unknown since $p$
+is discretized on the points $z^k$ only.
+The first order optimality conditions for \eqref{eq:approx-grad-on-M} can be
+written in the compact form
+\begin{equation}
+    A^j g^j = B^j P^j p,
+\end{equation}
+where, for each $j$, the sparse matrix $P^j \in \{0,1\}^{3,l}$ encodes the neighborhood
+relations of $y^j$ and $A^j \in \IR^{2,2}$, $B^j \in \IR^{2,3}$ are defined by
+\begin{align}
+    A^j := B^j M^j, &&
+    B^j := {M^j}^T E, &&
+    E := (I - r^{-1} ee^T), &&
+    e := (1, 1, 1) \in \IR^3.
+\end{align}
+
+In the following, the dimensions of the primal and dual variables are 
+\begin{align*}
+    & u \in \IR^{l,n}, && w \in \IR^{n,m,2,d}, \\
+    & p \in \IR^{l,d,n}, && g \in \IR^{n,m,2,d}, && q_0 \in \IR^{n},
+        && q_1 \in \IR^{l',n}, && q_2 \in \IR^{l',n}.
+\end{align*}
+Here, $l'$ denotes the number of labels used in the interim discretization of
+the sphere, crucial for the inverse Laplace-Beltrami operator
+$\Phi \in \IR^{l',l}$.
+The bounds are given by $f_1, f_2 \in \IR^{l',n}$.
+
+\subsection{Inverse Laplace-Beltrami operator}
+
+For the Laplace-Beltrami operator on the sphere $\Delta_b$, there's an inversion
+formula based on the fundamental solution,
+\[
+    U^*(x,x_0) := -\frac{1}{4\pi}\log|1 - x \cdot x_0|
+    \quad \forall x, x_0 \in \IS^2,
+\]
+namely:
+Whenever $f \in C^2(\IS^2)$, we have
+\[
+    \frac{1}{4\pi}\int_{\IS^2} f(x) \,dx
+    - \int_{\IS^2} U^*(x,x_0) \Delta_b f(x) \,dx = f(x_0).
+\]
+In particular, for constants, we have
+\begin{align*}
+    \int_{\IS^2} U^*(x,x_0) \,dx
+    &= \int_{\IS^2} U^*(x,e_3) \,dx \\
+    &= -\frac{1}{4\pi} \int_0^{2\pi}\int_0^\pi
+            \log|1 - \cos\theta| \sin\theta
+        \,d\theta d\phi \\
+    &= -\frac{1}{2} \int_0^\pi
+            \log|1 - \cos\theta| \sin\theta
+        \,d\theta \\
+    &= -\frac{1}{2} \int_{-1}^1 \log|1 - y| \,dy \\
+    &= -\frac{1}{2} \int_{0}^2 \log|z| \,dz \\
+    &= 1 - \log(2).
+\end{align*}
+
+\subsection{Inverse problem from Aganj's approach}
+
+Writing $F := \log(-\log(S/S_0))$, the formula due to Aganj reads:
+\[
+    \ODF = \frac{1}{4\pi} + \Delta_b\left[\FRT(F)\right].
+\]
+Now, the inversion formula tells us that
+\[
+    \frac{1}{4\pi}\int_{\IS^2} \FRT(F)(x) \,dx
+    - \int_{\IS^2} U^*(x,x_0) (\ODF(x) - \frac{1}{4\pi}) \,dx
+    = \FRT(F)(x_0)
+\]
+or, alternatively,
+\[
+    \FRT(F)(x_0) - \overline{\FRT(F)}
+    = \frac{1 - \log(2)}{4\pi} - U^*[\ODF](x_0).
+\]
+
+

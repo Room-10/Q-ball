@@ -1,0 +1,113 @@
+
+\subsection{From spatial displacement to Q-ball imaging}
+
+The basic concept of diffusion MRI is as follows:
+A gradient is added twice to the magnetic field, each time for a very short
+time interval $t_e$ (encoding time).
+A larger time interval $t_d \gg t_e$ is left between the two pulses.
+The measurement takes place after the second pulsed gradient and the measured
+signal strength corresponds to the diffusion that has taken place during the
+time interval $t_d$ in the direction of the applied gradient.
+The diffusion taking place during $t_e$ is neglected.
+
+According to (Cory, 1990), the measured signal \emph{at a fixed voxel}
+depending on the applied gradient $g$ is given by 
+\begin{align}
+    E(q) &:= \int_{\IR^3} P(r) e^{i \, q \cdot r} \,dr,
+\end{align}
+where
+\begin{align}
+    q &:= \gamma t_e g, \\
+    P(r) &:= \int_{\IR^3} \rho(x_0) P(x_0 + r|x_0) \,dx_0, \\
+    \rho(x_0) &: \text{initial concentration at $x_0$}, \\
+    P(x|x_0) &: \text{%
+        probability that a spin initially ar $x_0$
+        will move to $x$ (during $t_d$)%
+    }, \\
+    \gamma &: \text{magnetogyric ratio}, \\
+    g &: \text{magnetic field gradient strength}.
+\end{align}
+The Fourier relationship is attributed to (Stejskal, Tanner, 1965).
+
+For a complete reconstruction of the displacement profile $P(r)$ at the fixed
+voxel, a lot of samples are needed to cover the whole three-dimensional Cartesian
+lattice, which takes a really long time (more than 60 minutes) and poses
+strong (hardware) demands on the magnetic field gradients.
+This method is known as q-space imaging (QSI), diffusion spectrum imaging (DSI),
+diffusion displacement imaging or dynamic NMR microscopy.
+
+In DTI, as an a priori model assumption, the diffusion is assumed to take place
+in a single direction only, restricting displacement profiles to Gaussian
+diffusion.
+To fit data to this model, only 6 measurements are necessary.
+However, through experiments with QSI, it is known that the assumption of
+monodirectional diffusion is not accurate for at least 30 percent of the voxels,
+because the voxel size is pretty large.
+DTI performs very badly in these voxels, generally pointing in the mean diffusion
+direction.
+
+In HARDI, this is tackled by restricting to gradient directions on a
+fixed sphere in $q$-space so that we typically sample $E$ for 150--200 points
+on a sphere $|q| \equiv const$.
+
+Given the HARDI measurements, different reconstruction schemes have been
+applied.
+Q-ball imaging (Tuch, 2004) was the first technique for a model-free inversion.
+It aims at reconstructing not $P(r)$ but only the radial marginals, or
+orientation distribution functions (ODF),
+\[
+    u(x) := \int_0^\infty P(rx) r^2 \,dr,
+\]
+for unit direction vectors $x$.
+
+\subsection{Q-ball imaging and Funk-Radon transform}
+
+As a consequence of the microscopic detailed balance, $P(r)$ is assumed to have
+a reflection symmetry $P(r) = P(-r)$.
+Then, the relationship, for $|x| = 1$ and symmetric function $f$, 
+\[
+    \int_0^\infty f(rx) \,dr = \frac{1}{8\pi^2} \int_{x^\perp} \hat f (q) dq
+\]
+is used to derive the formula
+\[
+    u(x) = -\frac{1}{8\pi^2} \int_{x^\perp} \Delta E(q) dq,
+\]
+and this again can be written in spherical coordinates as
+\[
+    u(x) = \frac{1}{4\pi} - \frac{1}{8\pi^2} \int_0^{2\pi}\int_0^\infty
+        \frac{1}{r} \Delta_b E(rx)
+    \,drd\phi,
+\]
+where $\Delta_b$ is the Laplace-Beltrami operator.
+The monoexponential model due to (Aganj, 2010),
+\[
+    E(rx) \approx E(r_0 x)^{\frac{r^2}{r_0^2}},
+\]
+allows to write this using the Funk-Radon transform,
+\[
+    u(x) = \frac{1}{4\pi} - \frac{1}{16\pi^2} \FRT\left[
+        \Delta_b \log(-\log\tilde E)
+    \right](x),
+\]
+where $\tilde E(x) := E(r_0 x)$ and
+\[
+    \FRT[f](x) := \int_{\IS^2 \cap x^\perp} f(z) \,dz.
+\]
+A similar formula can be derived for the case where the samples are taken on
+more than one $q$-shell.
+
+\subsection{Where spherical harmonics come into play}
+
+The explicit formula allows for a voxel by voxel reconstruction by representing
+the signal in the basis of spherical harmonic functions,
+\begin{align}\label{eq:shm-fitting}
+    \log(-\log\tilde E(x)) = \sum_j c_j Y_j(x).
+\end{align}
+This basis is particularly well-suited to this problem, because spherical
+harmonics are Eigenvectors of the Laplace-Beltrami operator as well as of the
+Funk-Radon-transform.
+(Aganj, 2010) directly applies the spherical harmonics fitting
+\eqref{eq:shm-fitting} voxel by voxel using a minimum square error scheme.
+After that the reconstruction of $u$ is a simple multiplication by the
+corresponding eigenvalues.
+
