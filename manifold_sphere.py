@@ -3,6 +3,7 @@ from __future__ import division
 
 from compute_mean import manifold_mean
 from tools import normalize, plot_mesh3
+from util import output_dir_create
 
 import pickle
 import numpy as np
@@ -20,6 +21,7 @@ def load_sphere(vecs=None, refinement=2):
         sph = pickle.load(open(sphere_file, 'rb'))
     except:
         print("No cached sphere({}). Preparing...".format(sphere_lvl))
+        output_dir_create("cache")
         sph = Sphere(vecs=vecs, refinement=refinement)
         pickle.dump(sph, open(sphere_file, 'wb'))
     return sph
