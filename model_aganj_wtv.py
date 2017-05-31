@@ -2,7 +2,8 @@
 import numpy as np
 from dipy.reconst.shm import CsaOdfModel
 
-from solve_cvx import w1_tv_regularization
+#from solve_cvx import w1_tv_regularization
+from solve_cuda import w1_tv_regularization
 
 class AganjWassersteinModel(CsaOdfModel):
     def _get_shm_coef(self, data, mask=None):

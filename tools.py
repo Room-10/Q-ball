@@ -16,6 +16,11 @@ def normalize(u, p=2, thresh=0.0):
     fact[ns > thresh] = 1.0/ns[ns > thresh]
     return  u * fact # uses broadcasting
 
+def normalize_odf(odf, vol):
+    odf_flat = odf.reshape(odf.shape[0], -1)
+    odf_sum = np.einsum('k,ki->i', vol, odf_flat)
+    odf_flat[:] = np.einsum('i,ki->ki', 1.0/odf_sum, odf_flat)
+
 def plot_mesh3(ax, vecs, tris):
     """ Plots a surface according to a given triangulation.
 

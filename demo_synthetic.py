@@ -12,8 +12,10 @@ import dipy.core.sphere
 from dipy.reconst.shm import CsaOdfModel as AganjModel
 from dipy.viz import fvtk
 
+from tools import normalize_odf
 from model_wtv import WassersteinModel
-from model_aganj_wtv import AganjWassersteinModel, w1_tv_regularization
+from model_aganj_wtv import AganjWassersteinModel
+from solve_cuda import w1_tv_regularization
 import gen
 
 logging.info("Data setup.")
@@ -34,19 +36,19 @@ qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
 logging.info("Model setup.")
 models = [
     AganjModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+#    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
     AganjWassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
 ]
 
 logging.info("Model fitting.")
-us = [np.zeros(S_data.shape).T for m in range(1+len(models))]
+us = [np.zeros(S_data.shape).T for m in range(len(models))]
 for (j,m) in enumerate(models):
     logging.info("Model: %s" % type(m).__name__)
     u = m.fit(S_data).odf(qball_sphere)
     u = np.clip(u, 0, np.max(u, -1)[..., None])
     us[j][:] = u.T
-logging.info("Model from SSVM")
-us[-1][:] = w1_tv_regularization(us[0], gtab)[0].T
+#logging.info("Model from SSVM")
+#us.append(w1_tv_regularization(us[0], gtab)[0].T)
 us.reverse()
 
 logging.info("Plot result. Top to bottom.")

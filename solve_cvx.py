@@ -2,13 +2,9 @@
 import numpy as np
 import cvxpy as cvx
 
+from tools import normalize_odf
 from tools_cvx import cvxVariable, sparse_div_op, cvxOp
 from manifold_sphere import load_sphere
-
-def normalize_odf(odf, vol):
-    odf_flat = odf.reshape(odf.shape[0], -1)
-    odf_sum = np.einsum('k,ki->i', vol, odf_flat)
-    odf_flat[:] = np.einsum('i,ki->ki', 1.0/odf_sum, odf_flat)
 
 def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=1e+5):
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
@@ -90,7 +86,7 @@ def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=1e+5):
     u = u.T.reshape(imagedims + (l_labels,))
     return u, v
 
-def w1_tv_regularization(f, gtab, sampling_matrix=None):
+def w1_tv_regularization(f, gtab, sampling_matrix=None, lbd=10.0):
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 
@@ -100,7 +96,6 @@ def w1_tv_regularization(f, gtab, sampling_matrix=None):
     imagedims = f.shape[1:]
     d_image = len(imagedims)
     n_image = np.prod(imagedims)
-    lbd = 10.0
 
     p  = cvxVariable(l_labels, d_image, n_image)
     g  = cvxVariable(n_image, m_gradients, d_image, 2)
