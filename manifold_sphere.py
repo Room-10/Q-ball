@@ -1,8 +1,8 @@
 
 from __future__ import division
 
-from compute_mean import manifold_mean
 from tools import normalize, plot_mesh3
+from tools_mean import manifold_mean
 from util import output_dir_create
 
 import pickle
@@ -67,9 +67,11 @@ class Sphere(object):
         # b { l_labels }
         # P { m_gradients, r_points }
         # b : vol. elements, s.t. sum(self.b) converges to 4*PI as n to inf
-        self.b = sphere_areas(vecs)
+        self.b = np.zeros((l_labels,), order='C')
+        self.b[:] = sphere_areas(vecs)
         self.b_precond = 1.0/np.sqrt(np.einsum('i,i->', self.b, self.b))
-        self.P = tris.T
+        self.P = np.zeros((m_gradients, r_points), order='C', dtype=np.int64)
+        self.P[:] = tris.T
 
         # A { m_gradients, s_manifold, s_manifold }
         # B { m_gradients, s_manifold, r_points }

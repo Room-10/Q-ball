@@ -6,59 +6,6 @@ import numpy as np
 from numpy.linalg import norm
 from numba import jit
 
-def pd_iteration_step(uk, vk, wk, w0k,
-                      ubark, vbark, wbark, w0bark,
-                      ukp1, vkp1, wkp1, w0kp1,
-                      pk, gk, q0k, q1k, p0k, g0k,
-                      pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
-                      sigma, tau, lbd, theta, dataterm_factor,
-                      b_sph, f, Y, constraint_u, uconstrloc,
-                      dataterm, avgskips, g_norms):
-    # duals
-    manifold_op(
-        ubark, vbark, wbark, w0bark,
-        pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
-        b_sph, f, Y, dataterm, avgskips
-    )
-    pkp1[:] = pk + sigma*pkp1
-    gkp1[:] = gk + sigma*gkp1
-    q0kp1[:] = q0k + sigma*q0kp1
-    q1kp1[:] = q1k + sigma*q1kp1
-    p0kp1[:] = p0k + sigma*p0kp1
-    g0kp1[:] = g0k + sigma*g0kp1
-    project_gradients(gkp1, lbd, g_norms)
-    project_gradients(g0kp1[:,:,:,np.newaxis], 1.0, g_norms)
-    # update
-    pk[:] = pkp1
-    gk[:] = gkp1
-    q0k[:] = q0kp1
-    q1k[:] = q1kp1
-    p0k[:] = p0kp1
-    g0k[:] = g0kp1
-
-    # primals
-    manifold_op_adjoint(
-        ukp1, vkp1, wkp1, w0kp1,
-        pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
-        b_sph, f, Y, dataterm, avgskips
-    )
-    np.einsum('k,k...->k...', dataterm_factor, uk - tau*ukp1, out=ukp1)
-    ukp1[:] = np.fmax(0.0, ukp1)
-    ukp1[:,uconstrloc] = constraint_u[:,uconstrloc]
-    vkp1[:] = vk - tau*vkp1
-    wkp1[:] = wk - tau*wkp1
-    w0kp1[:] = w0k - tau*w0kp1
-    # overrelaxation
-    ubark[:] = ukp1 + theta * (ukp1 - uk)
-    vbark[:] = vkp1 + theta * (vkp1 - vk)
-    wbark[:] = wkp1 + theta * (wkp1 - wk)
-    w0bark[:] = w0kp1 + theta * (w0kp1 - w0k)
-    # update
-    uk[:] = ukp1
-    vk[:] = vkp1
-    wk[:] = wkp1
-    w0k[:] = w0kp1
-
 def compute_primal_obj(ukp1, vkp1, wkp1, w0kp1,
                        pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
                        lbd, f, Y, b_sph, constraint_u, uconstrloc,
@@ -170,6 +117,59 @@ def compute_dual_obj(ukp1, vkp1, wkp1, w0kp1,
                 + norm(np.fmax(0, g_norms - lbd), ord=np.inf)
 
     return obj_d, infeas_d
+
+def pd_iteration_step(uk, vk, wk, w0k,
+                      ubark, vbark, wbark, w0bark,
+                      ukp1, vkp1, wkp1, w0kp1,
+                      pk, gk, q0k, q1k, p0k, g0k,
+                      pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
+                      sigma, tau, lbd, theta, dataterm_factor,
+                      b_sph, f, Y, constraint_u, uconstrloc,
+                      dataterm, avgskips, g_norms):
+    # duals
+    manifold_op(
+        ubark, vbark, wbark, w0bark,
+        pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
+        b_sph, f, Y, dataterm, avgskips
+    )
+    pkp1[:] = pk + sigma*pkp1
+    gkp1[:] = gk + sigma*gkp1
+    q0kp1[:] = q0k + sigma*q0kp1
+    q1kp1[:] = q1k + sigma*q1kp1
+    p0kp1[:] = p0k + sigma*p0kp1
+    g0kp1[:] = g0k + sigma*g0kp1
+    project_gradients(gkp1, lbd, g_norms)
+    project_gradients(g0kp1[:,:,:,np.newaxis], 1.0, g_norms)
+    # update
+    pk[:] = pkp1
+    gk[:] = gkp1
+    q0k[:] = q0kp1
+    q1k[:] = q1kp1
+    p0k[:] = p0kp1
+    g0k[:] = g0kp1
+
+    # primals
+    manifold_op_adjoint(
+        ukp1, vkp1, wkp1, w0kp1,
+        pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
+        b_sph, f, Y, dataterm, avgskips
+    )
+    np.einsum('k,k...->k...', dataterm_factor, uk - tau*ukp1, out=ukp1)
+    ukp1[:] = np.fmax(0.0, ukp1)
+    ukp1[:,uconstrloc] = constraint_u[:,uconstrloc]
+    vkp1[:] = vk - tau*vkp1
+    wkp1[:] = wk - tau*wkp1
+    w0kp1[:] = w0k - tau*w0kp1
+    # overrelaxation
+    ubark[:] = ukp1 + theta * (ukp1 - uk)
+    vbark[:] = vkp1 + theta * (vkp1 - vk)
+    wbark[:] = wkp1 + theta * (wkp1 - wk)
+    w0bark[:] = w0kp1 + theta * (w0kp1 - w0k)
+    # update
+    uk[:] = ukp1
+    vk[:] = vkp1
+    wk[:] = wkp1
+    w0k[:] = w0kp1
 
 
 def manifold_op(u, v, w, w0, pgrad, ggrad, q0grad, q1grad, p0grad, g0grad,

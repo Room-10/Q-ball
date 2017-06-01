@@ -2,7 +2,7 @@
 from manifold_sphere import load_sphere
 from tools import normalize_odf
 from tools_diff import staggered_diff_avgskips
-from solve_pd import *
+from solve_pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
 import util
 
 import numpy as np
@@ -14,13 +14,13 @@ def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=1e+5):
 
 def w1_tv_regularization(f, gtab,
         sampling_matrix=None,
-        lbd=2.0,
-        term_relgap=1e-4,
+        lbd=10.0,
+        term_relgap=1e-7,
         term_infeas=None,
-        term_maxiter=10000,
+        term_maxiter=1000,
         step_bound=0.05,
-        step_factor=1000,
-        granularity=1000,
+        step_factor=0.005,
+        granularity=100,
         use_gpu=True,
         constraint_u=None,
         dataterm="W1",
@@ -42,14 +42,15 @@ def w1_tv_regularization(f, gtab,
     """
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
+    normalize_odf(f, b_sph.b)
 
-    l_labels = b_sph.mdims['l_labels']
-    m_gradients = b_sph.mdims['m_gradients']
-    s_manifold = b_sph.mdims['s_manifold']
-    assert(f.shape[0] == l_labels)
     imagedims = f.shape[1:]
-    d_image = len(imagedims)
     n_image = np.prod(imagedims)
+    d_image = len(imagedims)
+    l_labels = b_sph.mdims['l_labels']
+    s_manifold = b_sph.mdims['s_manifold']
+    m_gradients = b_sph.mdims['m_gradients']
+    assert(f.shape[0] == l_labels)
 
     Y = np.eye(l_labels)
     if sampling_matrix is not None:
@@ -74,9 +75,6 @@ def w1_tv_regularization(f, gtab,
         constraint_u = np.zeros((l_labels,) + imagedims, order='C')
         constraint_u[:] = np.nan
     uconstrloc = np.any(np.logical_not(np.isnan(constraint_u)), axis=0)
-
-    normalize_odf(f, b_sph.b)
-    f_flat = f.reshape(l_labels, n_image)
 
     bnd = step_bound   # < 1/|K|^2
     fact = step_factor # tau/sigma
@@ -191,10 +189,6 @@ def w1_tv_regularization(f, gtab,
                 if interrupt_hdl.interrupted:
                     break
 
-    u = uk.copy().reshape(l_labels,-1).T.reshape(imagedims + (l_labels,))
-    v = vk.T.reshape(imagedims + (l_shm,))
-    return u, v
-"""
     return (uk, vk, wk, w0k, pk, gk, q0k, q1k, p0k, g0k), {
         'objp': obj_p,
         'objd': obj_d,
@@ -202,4 +196,3 @@ def w1_tv_regularization(f, gtab,
         'infeasd': infeas_d,
         'relgap': relgap
     }
-"""

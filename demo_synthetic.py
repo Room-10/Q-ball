@@ -14,7 +14,7 @@ from dipy.viz import fvtk
 
 from tools import normalize_odf
 from model_wtv import WassersteinModel
-from model_aganj_wtv import AganjWassersteinModel
+from model_aganj_wtv import AganjWassersteinModel, AganjWassersteinModelGPU, AganjWassersteinModelCVX
 from solve_cuda import w1_tv_regularization
 import gen
 
@@ -37,7 +37,9 @@ logging.info("Model setup.")
 models = [
     AganjModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
 #    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    AganjWassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
     AganjWassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    AganjWassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
 ]
 
 logging.info("Model fitting.")
