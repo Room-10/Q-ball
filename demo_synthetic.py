@@ -16,7 +16,7 @@ from tools import normalize_odf
 from model_wtv import WassersteinModel
 from model_aganj_wtv import AganjWassersteinModel, AganjWassersteinModelGPU, AganjWassersteinModelCVX
 from solve_cuda import w1_tv_regularization
-import gen
+import tools_gen as gen
 
 logging.info("Data setup.")
 S_data, gtab = gen.synthetic()
