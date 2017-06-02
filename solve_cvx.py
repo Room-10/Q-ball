@@ -6,7 +6,7 @@ from tools import normalize_odf
 from tools_cvx import cvxVariable, sparse_div_op, cvxOp
 from manifold_sphere import load_sphere
 
-def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=1e+5):
+def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 
@@ -27,9 +27,10 @@ def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=1e+5):
     q2 = cvxVariable(l_labels, n_image)
 
     obj = cvx.Maximize(
-        - 0.25*cvx.sum_entries(cvx.square(q1))
-        - cvx.vec(F_data).T*cvx.vec(q1)
-        - cvx.sum_entries(q0)
+          0.5*cvx.sum_entries(cvx.diag(b_sph.b)*cvx.square(F_data))
+        - 0.5*cvx.sum_entries(
+            cvx.diag(1.0/b_sph.b)*cvx.square(q2 + cvx.diag(b_sph.b)*F_data)
+        ) - cvx.sum_entries(q0)
     )
 
     div_op = sparse_div_op(imagedims)
@@ -51,30 +52,30 @@ def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=1e+5):
                 )
     constraints += w_constr
 
-    u_constr = []
+    u1_constr = []
     for k in range(l_labels):
         for i in range(n_image):
-            u_constr.append(
-               b_sph.b[k]*(q0[i] - cvxOp(div_op, p[k], i)) - q2[k,i] >= 0
+            u1_constr.append(
+               b_sph.b[k]*(q0[i] - cvxOp(div_op, p[k], i)) - q1[k,i] >= 0
             )
-    constraints += u_constr
+    constraints += u1_constr
 
     v_constr = []
     for k in range(l_shm):
         for i in range(n_image):
             Yk = cvx.vec(sampling_matrix[:,k])
             v_constr.append(
-                Yk.T*(model_matrix[k]*q1[:,i] + q2[:,i]) == 0
+                Yk.T*(model_matrix[k]*q2[:,i] + q1[:,i]) == 0
             )
     constraints += v_constr
 
     prob = cvx.Problem(obj, constraints)
     prob.solve(verbose=True)
 
-    u = np.zeros((l_labels, n_image), order='C')
+    u1 = np.zeros((l_labels, n_image), order='C')
     for k in range(l_labels):
         for i in range(n_image):
-            u[k,i] = -u_constr[k*n_image+i].dual_value
+            u1[k,i] = -u1_constr[k*n_image+i].dual_value
 
     v = np.zeros((l_shm, n_image), order='C')
     for k in range(l_shm):
@@ -83,7 +84,7 @@ def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=1e+5):
 
     v = v.T.reshape(imagedims + (l_shm,))
     v[..., 0] = .5 / np.sqrt(np.pi) # == CsaOdfModel._n0_const
-    u = u.T.reshape(imagedims + (l_labels,))
+    u = u1.T.reshape(imagedims + (l_labels,))
     return u, v
 
 def w1_tv_regularization(f, gtab, sampling_matrix=None, lbd=10.0):

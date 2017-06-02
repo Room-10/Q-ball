@@ -13,7 +13,7 @@ from dipy.reconst.shm import CsaOdfModel as AganjModel
 from dipy.viz import fvtk
 
 from tools import normalize_odf
-from model_wtv import WassersteinModel
+from model_wtv import WassersteinModel, WassersteinModelGPU, WassersteinModelCVX
 from model_aganj_wtv import AganjWassersteinModel, AganjWassersteinModelGPU, AganjWassersteinModelCVX
 from solve_cuda import w1_tv_regularization
 import tools_gen as gen
@@ -36,7 +36,9 @@ qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
 logging.info("Model setup.")
 models = [
     AganjModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-#    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    WassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    WassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
     AganjWassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
     AganjWassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
     AganjWassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),

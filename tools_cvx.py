@@ -1,7 +1,7 @@
 
 import numpy as np
 import cvxpy as cvx
-from staggered_diff import staggered_diff_avgskips
+from tools_diff import staggered_diff_avgskips
 
 def cvxVariable(*args):
     """ Create a multidimensional CVXPY variable
