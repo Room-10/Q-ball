@@ -149,7 +149,7 @@ __global__ void PrimalKernel3(double *u1k, double *u2k, double *vk, double *wk,
     u1bark[k*n_image + i] = ubark_tmp + theta*(ubark_tmp - u1k[k*n_image + i]);
     u1k[k*n_image + i] = ubark_tmp;
 
-    ubark_tmp = u2bark[k*n_image + i];
+    ubark_tmp = 0.0;
     ubark_tmp -= q2kp1[k*n_image + i];
     ubark_tmp -= b[k]*f[k*n_image + i];
     ubark_tmp = dataterm_factor*(u2k[k*n_image + i] - tau*ubark_tmp);
