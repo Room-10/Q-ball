@@ -84,13 +84,12 @@ def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix,
 
     if continue_at is None:
         # start with a uniform distribution in each voxel
-        u1k = np.zeros((l_labels, n_image), order='C')
-        u1k[:] = np.tile(1.0/b_sph.b, (n_image, 1)).T/l_labels
-        u1k = u1k.reshape((l_labels,) + imagedims)
+        u1k = np.ones((l_labels,) + imagedims, order='C')/np.einsum('k->', b_sph.b)
         u1k[:,uconstrloc] = constraint_u[:,uconstrloc]
 
         u2k = np.zeros((l_labels, n_image), order='C')
         vk = np.zeros((l_shm, n_image), order='C')
+        vk[0,:] = .5 / np.sqrt(np.pi)
         wk = np.zeros((n_image, m_gradients, s_manifold, d_image), order='C')
         pk = np.zeros((l_labels, d_image, n_image), order='C')
         gk = np.zeros((n_image, m_gradients, s_manifold, d_image), order='C')

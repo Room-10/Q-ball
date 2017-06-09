@@ -51,11 +51,14 @@ for (j,m) in enumerate(models):
     u = m.fit(S_data).odf(qball_sphere)
     u = np.clip(u, 0, np.max(u, -1)[..., None])
     us[j][:] = u.T
+
 logging.info("Model from SSVM")
-us.append(w1_tv_regularization(us[0], gtab)[0].T)
+us.append(np.zeros(S_data.shape).T)
+pd_state, details = w1_tv_regularization(us[0], gtab)
+us[-1][:] = pd_state[0]
 us.reverse()
 
-logging.info("Plot result. Top to bottom:\n%s"
+logging.info("Plot result. Top to bottom:\n%s\nModel from SSVM"
     % "\n".join(type(m).__name__  for m in models))
 if d_image == 2:
     uniform_odf = np.ones((l_labels,), order='C')/l_labels

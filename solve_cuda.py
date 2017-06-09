@@ -84,12 +84,11 @@ def w1_tv_regularization(f, gtab,
 
     if continue_at is None:
         # start with a uniform distribution in each voxel
-        uk = np.zeros((l_labels, n_image), order='C')
-        uk[:] = np.tile(1.0/b_sph.b, (n_image, 1)).T/l_labels
-        uk = uk.reshape((l_labels,) + imagedims)
+        uk = np.ones((l_labels,) + imagedims, order='C')/np.einsum('k->', b_sph.b)
         uk[:,uconstrloc] = constraint_u[:,uconstrloc]
 
         vk = np.zeros((l_shm, n_image), order='C')
+        vk[0,:] = .5 / np.sqrt(np.pi)
         wk = np.zeros((n_image, m_gradients, s_manifold, d_image), order='C')
         w0k = np.zeros((n_image, m_gradients, s_manifold), order='C')
         pk = np.zeros((l_labels, d_image, n_image), order='C')
