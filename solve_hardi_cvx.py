@@ -1,5 +1,4 @@
 
-from tools import normalize_odf
 from tools_cvx import cvxVariable, sparse_div_op, cvxOp
 from manifold_sphere import load_sphere
 
@@ -8,35 +7,39 @@ import cvxpy as cvx
 
 import logging
 
-def w1_tv_regularization(f, gtab, sampling_matrix=None, lbd=10.0):
+def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 
     l_labels = b_sph.mdims['l_labels']
     m_gradients = b_sph.mdims['m_gradients']
-    assert(f.shape[0] == l_labels)
-    imagedims = f.shape[1:]
+    assert(data.shape[-1] == l_labels)
+    imagedims = data.shape[:-1]
     d_image = len(imagedims)
     n_image = np.prod(imagedims)
+
+    f = np.zeros((l_labels, n_image), order='C')
+    f[:] = np.log(-np.log(data)).reshape(-1, l_labels).T
+    f_mean = np.einsum('ki,k->i', f, b_sph.b)/(4*np.pi)
+    f -= f_mean
 
     p  = cvxVariable(l_labels, d_image, n_image)
     g  = cvxVariable(n_image, m_gradients, 2, d_image)
     q0 = cvxVariable(n_image)
     q1 = cvxVariable(l_labels, n_image)
-    p0 = cvxVariable(l_labels, n_image)
-    g0 = cvxVariable(n_image, m_gradients, 2)
+    q2 = cvxVariable(l_labels, n_image)
 
-    Y = np.eye(l_labels)
-    if sampling_matrix is not None:
-        Y = sampling_matrix
+    Y = np.zeros(sampling_matrix.shape, order='C')
+    Y[:] = sampling_matrix
     l_shm = Y.shape[1]
-
-    normalize_odf(f, b_sph.b)
-    f_flat = f.reshape(l_labels, n_image)
+    M = model_matrix
+    assert(M.size == l_shm)
 
     obj = cvx.Maximize(
-        - cvx.vec(f_flat).T*cvx.vec(cvx.diag(b_sph.b)*p0)
-        - cvx.sum_entries(q0)
+          0.5*cvx.sum_entries(cvx.diag(b_sph.b)*cvx.square(f))
+        - 0.5*cvx.sum_entries(
+            cvx.diag(1.0/b_sph.b)*cvx.square(q2 + cvx.diag(b_sph.b)*f)
+        ) - cvx.sum_entries(q0)
     )
 
     div_op = sparse_div_op(imagedims)
@@ -45,37 +48,33 @@ def w1_tv_regularization(f, gtab, sampling_matrix=None, lbd=10.0):
     for i in range(n_image):
         for j in range(m_gradients):
             constraints.append(cvx.norm(g[i][j], 2) <= lbd)
-            constraints.append(cvx.norm(g0[i][j,:], 2) <= 1.0)
 
-    w0_constr = []
     w_constr = []
     for j in range(m_gradients):
         Aj = b_sph.A[j,:,:]
         Bj = b_sph.B[j,:,:]
         Pj = b_sph.P[j,:]
         for i in range(n_image):
-            w0_constr.append(Aj*g0[i][j,:].T == Bj*p0[Pj,i])
             for t in range(d_image):
                 w_constr.append(
                     Aj*g[i][j][:,t] == sum([Bj[:,m]*p[Pj[m]][t,i] for m in range(3)])
                 )
-    constraints += w0_constr
     constraints += w_constr
 
-    u_constr = []
+    u1_constr = []
     for k in range(l_labels):
         for i in range(n_image):
-            u_constr.append(
-                b_sph.b[k]*(q0[i] + p0[k,i] - cvxOp(div_op, p[k], i)) - q1[k,i] >= 0
+            u1_constr.append(
+               b_sph.b[k]*(q0[i] - cvxOp(div_op, p[k], i)) - q1[k,i] >= 0
             )
-    constraints += u_constr
+    constraints += u1_constr
 
     v_constr = []
     for k in range(l_shm):
         for i in range(n_image):
             Yk = cvx.vec(Y[:,k])
             v_constr.append(
-                Yk.T*q1[:,i] == 0
+                Yk.T*(M[k]*q2[:,i] + q1[:,i]) == 0
             )
     constraints += v_constr
 
@@ -93,22 +92,23 @@ def w1_tv_regularization(f, gtab, sampling_matrix=None, lbd=10.0):
     q0k[:] = q0.value.ravel()
     q1k = np.zeros((l_labels, n_image), order='C')
     q1k[:,:] = q1.value
-    p0k = np.zeros((l_labels, n_image), order='C')
-    p0k[:,:] = p0.value
-    g0k = np.zeros((n_image, m_gradients, 2), order='C')
-    for i in range(n_image):
-        g0k[i,:,:] = g0[i].value
+    q2k = np.zeros((l_labels, n_image), order='C')
+    q2k[:,:] = q2.value
 
     vk = np.zeros((l_shm, n_image), order='C')
     for k in range(l_shm):
         for i in range(n_image):
             vk[k,i] = -v_constr[k*n_image+i].dual_value
 
-    uk = np.zeros((l_labels, n_image), order='C')
+    u1k = np.zeros((l_labels, n_image), order='C')
     for k in range(l_labels):
         for i in range(n_image):
-            uk[k,i] = u_constr[k*n_image+i].dual_value
-    uk = uk.reshape((l_labels,) + imagedims)
+            u1k[k,i] = -u1_constr[k*n_image+i].dual_value
+    u1k = u1k.reshape((l_labels,) + imagedims)
+
+    u2k = np.zeros((l_labels, n_image), order='C')
+    np.einsum('km,mi->ki', sampling_matrix,
+        np.einsum('m,mi->mi', model_matrix, vk), out=u2k)
 
     wk = np.zeros((n_image, m_gradients, 2, d_image), order='C')
     for j in range(m_gradients):
@@ -116,26 +116,21 @@ def w1_tv_regularization(f, gtab, sampling_matrix=None, lbd=10.0):
             for t in range(d_image):
                 wk[i,j,:,t] = w_constr[(j*n_image + i)*d_image + t].dual_value.ravel()
 
-    w0k = np.zeros((n_image, m_gradients, 2), order='C')
-    for j in range(m_gradients):
-        for i in range(n_image):
-            w0k[i,j,:] = w0_constr[j*n_image + i].dual_value.ravel()
-
-    from solve_pd import compute_primal_obj, compute_dual_obj
+    from solve_hardi_pd import compute_primal_obj, compute_dual_obj
     from tools_diff import staggered_diff_avgskips
     constraint_u = np.zeros((l_labels,) + imagedims, order='C')
     constraint_u[:] = np.nan
     uconstrloc = np.any(np.logical_not(np.isnan(constraint_u)), axis=0)
     avgskips = staggered_diff_avgskips(imagedims)
     g_norms = np.zeros((n_image, m_gradients), order='C')
-    obj_p, infeas_p = compute_primal_obj(uk, vk, wk, w0k,
-                                         pk, gk, q0k, q1k, p0k, g0k,
-                                         lbd, f, Y, b_sph, constraint_u, uconstrloc,
-                                         "W1", avgskips, g_norms)
-    obj_d, infeas_d = compute_dual_obj(uk, vk, wk, w0k,
-                                       pk, gk, q0k, q1k, p0k, g0k,
-                                       lbd, f, Y, b_sph, constraint_u, uconstrloc,
-                                       "W1", avgskips, g_norms)
+    obj_p, infeas_p = compute_primal_obj(u1k, u2k, vk, wk,
+                           pk, gk, q0k, q1k, q2k,
+                           lbd, f, Y, M, b_sph, constraint_u, uconstrloc,
+                           avgskips, g_norms)
+    obj_d, infeas_d = compute_dual_obj(u1k, u2k, vk, wk,
+                           pk, gk, q0k, q1k, q2k,
+                           lbd, f, Y, M, b_sph, constraint_u, uconstrloc,
+                           avgskips, g_norms)
     relgap = (obj_p - obj_d) / max(np.spacing(1), obj_d)
     logging.debug("{}: objp = {: 9.6g} ({: 9.6g}), " \
         "objd = {: 9.6g} ({: 9.6g}), " \
@@ -147,7 +142,7 @@ def w1_tv_regularization(f, gtab, sampling_matrix=None, lbd=10.0):
         relgap
     ))
 
-    return (uk, vk, wk, w0k, pk, gk, q0k, q1k, p0k, g0k), {
+    return (u1k, u2k, vk, wk, pk, gk, q0k, q1k, q2k), {
         'objp': prob.value,
         'status': prob.status
     }

@@ -36,12 +36,12 @@ qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
 logging.info("Model setup.")
 models = [
     AganjModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    WassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    WassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
     AganjWassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
     AganjWassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
     AganjWassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    WassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    WassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
 ]
 
 logging.info("Model fitting.")
@@ -51,11 +51,12 @@ for (j,m) in enumerate(models):
     u = m.fit(S_data).odf(qball_sphere)
     u = np.clip(u, 0, np.max(u, -1)[..., None])
     us[j][:] = u.T
-#logging.info("Model from SSVM")
-#us.append(w1_tv_regularization(us[0], gtab)[0].T)
+logging.info("Model from SSVM")
+us.append(w1_tv_regularization(us[0], gtab)[0].T)
 us.reverse()
 
-logging.info("Plot result. Top to bottom.")
+logging.info("Plot result. Top to bottom:\n%s"
+    % "\n".join(type(m).__name__  for m in models))
 if d_image == 2:
     uniform_odf = np.ones((l_labels,), order='C')/l_labels
     spacing = np.tile(uniform_odf, (1, imagedims[1], 1)).T

@@ -64,7 +64,8 @@ class WassersteinModelCVX(QballBaseModel):
         data = data.clip(self.min, self.max)
         Minv = np.zeros(self._fit_matrix.shape)
         Minv[1:] = 1.0/self._fit_matrix[1:]
-        from solve_cvx import l2_w1tv_fitting
-        u, v = l2_w1tv_fitting(data, self.gtab, self.B, Minv)
-        sh_coef = v
+        from solve_hardi_cvx import l2_w1tv_fitting
+        pd_state, details = l2_w1tv_fitting(data, self.gtab, self.B, Minv)
+        sh_coef = pd_state[2].T.reshape(data.shape[:-1]+(self.B.shape[1],))
+        sh_coef[..., 0] = self._n0_const
         return sh_coef
