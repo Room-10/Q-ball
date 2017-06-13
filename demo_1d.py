@@ -12,14 +12,14 @@ import dipy.core.sphere
 from dipy.reconst.shm import CsaOdfModel as AganjModel
 from dipy.viz import fvtk
 
-from tools import normalize_odf
 from model_wtv import WassersteinModel, WassersteinModelGPU, WassersteinModelCVX
 from model_aganj_wtv import AganjWassersteinModel, AganjWassersteinModelGPU, AganjWassersteinModelCVX
-from solve_cuda import w1_tv_regularization
+from solve_qb_cuda import w1_tv_regularization
 import tools_gen as gen
 
 logging.info("Data setup.")
-S_data, gtab = gen.synthetic()
+#np.random.seed(seed=234234)
+S_data, gtab = gen.synthetic_unimodals()
 
 l_labels = S_data.shape[-1]
 imagedims = S_data.shape[:-1]
@@ -36,12 +36,12 @@ qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
 logging.info("Model setup.")
 models = [
     AganjModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    AganjWassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    AganjWassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    AganjWassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    WassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-    WassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+#    AganjWassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+#    AganjWassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+#    AganjWassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+#    WassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+#    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+#    WassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
 ]
 
 logging.info("Model fitting.")
@@ -54,7 +54,17 @@ for (j,m) in enumerate(models):
 
 logging.info("Model from SSVM")
 us.append(np.zeros(S_data.shape).T)
-pd_state, details = w1_tv_regularization(us[0], gtab)
+params = {
+    'lbd': 0.9,
+    'term_relgap': 1e-7,
+    'term_maxiter': 80000,
+    'granularity': 2000,
+    'step_factor': 0.0001,
+    'step_bound': 1.3,
+    'dataterm': "W1",
+    'use_gpu': True
+}
+pd_state, details = w1_tv_regularization(us[0], gtab, **params)
 us[-1][:] = pd_state[0]
 us.reverse()
 
@@ -70,8 +80,8 @@ else:
     plotdata = np.dstack(us)
 plotdata = plotdata[:,:,:,np.newaxis].transpose(1,2,3,0)
 
-plot_scale = 2.4
-plot_norm = True
+plot_scale = 1.0
+plot_norm = False
 
 r = fvtk.ren()
 fvtk.add(r, fvtk.sphere_funcs(plotdata, qball_sphere, colormap='jet',

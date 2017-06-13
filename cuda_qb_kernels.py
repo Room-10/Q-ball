@@ -9,26 +9,24 @@ from pycuda.driver import device_attribute as devattr
 
 import logging
 
-def prepare_const_gpudata(b_sph, f, Y, constraint_u, uconstrloc):
+def prepare_const_gpudata(mf, f, constraint_u, uconstrloc):
     """ Preload relevant constant data to the GPU
 
     Args:
-        b_sph : manifold to solve problem on
+        mf : manifold to solve problem on
         f : cost vector (s) or reference image
-        Y : sampling matrix
         constraint_u : constraint vector
         uconstrloc : constraint locations
     Returns:
         A dictionary with references to the gpudata for pd_iterate_on_gpu.
     """
     return {
-        'b_precond': b_sph.b_precond,
-        'b': gpuarray.to_gpu(b_sph.b).gpudata,
-        'A': gpuarray.to_gpu(b_sph.A).gpudata,
-        'B': gpuarray.to_gpu(b_sph.B).gpudata,
-        'P': gpuarray.to_gpu(b_sph.P).gpudata,
+        'b_precond': mf.b_precond,
+        'b': gpuarray.to_gpu(mf.b).gpudata,
+        'A': gpuarray.to_gpu(mf.A).gpudata,
+        'B': gpuarray.to_gpu(mf.B).gpudata,
+        'P': gpuarray.to_gpu(mf.P).gpudata,
         'f': gpuarray.to_gpu(f).gpudata,
-        'Y': gpuarray.to_gpu(Y).gpudata,
         'uconstrloc': gpuarray.to_gpu(uconstrloc).gpudata,
         'constraint_u': gpuarray.to_gpu(constraint_u).gpudata
     }
@@ -42,7 +40,6 @@ device_constants_template = """
 #define d_image (%(d_image)d)
 #define l_labels (%(l_labels)d)
 #define r_points (%(r_points)d)
-#define l_shm (%(l_shm)d)
 
 #define nd_skip (%(d_image)d*%(n_image)d)
 #define ld_skip (%(d_image)d*%(l_labels)d)
@@ -60,21 +57,20 @@ __constant__ int skips[%(d_image)d] = { %(skips)s };
 __constant__ int avgskips[%(d_image)d*%(navgskips)d] = { %(avgskips)s };
 """
 
-def prepare_kernels(u, v, w, b_sph, avgskips, dataterm):
+def prepare_kernels(u, w, mf, avgskips, dataterm):
     """ Compile and prepare CUDA kernel functions
 
     Args:
-        u, v, w : arrays in shape of objective primals
-        b_sph : manifold to solve problem on
+        u, w : arrays in shape of objective primals
+        mf : manifold to solve problem on
         avgskips : output of staggered_diff_avgskips(u.shape[1:])
     Returns:
         A list of executable CUDA kernels for pd_iterate_on_gpu
     """
     l_labels = u.shape[0]
     imagedims = u.shape[1:]
-    l_shm = v.shape[0]
     n_image, m_gradients, s_manifold, d_image = w.shape
-    r_points = b_sph.mdims['r_points']
+    r_points = mf.mdims['r_points']
     navgskips =  1 << (d_image - 1)
 
     skips = (1,)
@@ -90,14 +86,13 @@ def prepare_kernels(u, v, w, b_sph, avgskips, dataterm):
         's_manifold': s_manifold,
         'd_image': d_image,
         'r_points': r_points,
-        'l_shm': l_shm,
         'navgskips': navgskips,
         'avgskips': ", ".join(str(i) for i in avgskips.ravel()),
         'skips': ", ".join(str(i) for i in skips),
         'dataterm': dataterm[0].upper()
     }
-    kernels_code += open('cuda_kernels_primal.cu', 'r').read()
-    kernels_code += open('cuda_kernels_dual.cu', 'r').read()
+    kernels_code += open('cuda_qb_kernels_primal.cu', 'r').read()
+    kernels_code += open('cuda_qb_kernels_dual.cu', 'r').read()
 
     # print information on the current GPU
     attrs = pycuda.autoinit.device.get_attributes()
@@ -116,8 +111,7 @@ def prepare_kernels(u, v, w, b_sph, avgskips, dataterm):
         ("DualKernel3", (n_image, m_gradients, 1), (16, 16, 1)),
         ("PrimalKernel1", (l_labels, 1, 1), (16, 1, 1)),
         ("PrimalKernel2", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-        ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1)),
-        ("PrimalKernel4", (n_image, l_shm, 1), (16, 16, 1)),
+        ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1))
     ]
 
     result = [
@@ -128,7 +122,7 @@ def prepare_kernels(u, v, w, b_sph, avgskips, dataterm):
         }
         for d in result
     ]
-    [k['func'].prepare("P"*26 + "d"*5 + "P"*2) for k in result]
+    [k['func'].prepare("P"*21 + "d"*5 + "P"*2) for k in result]
     logging.info("CUDA kernels prepared for GPU (MAX_BLOCK_DIM={blockdims}, " \
         "MAX_GRID_DIM={griddims}, MAX_THREADS_PER_BLOCK={maxthreads})".format(
         blockdims="x".join(map(str,blockdims)),

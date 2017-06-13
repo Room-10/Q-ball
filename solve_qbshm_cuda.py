@@ -2,15 +2,14 @@
 from manifold_sphere import load_sphere
 from tools import normalize_odf
 from tools_diff import staggered_diff_avgskips
-from solve_pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
+from solve_qbshm_pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
 import util
 
 import numpy as np
 
 import logging
 
-def w1_tv_regularization(f, gtab,
-        sampling_matrix=None,
+def w1_tv_regularization(f, gtab, sampling_matrix,
         lbd=10.0,
         term_relgap=1e-7,
         term_infeas=None,
@@ -49,10 +48,8 @@ def w1_tv_regularization(f, gtab,
     m_gradients = b_sph.mdims['m_gradients']
     assert(f.shape[0] == l_labels)
 
-    Y = np.eye(l_labels)
-    if sampling_matrix is not None:
-        Y = np.zeros(sampling_matrix.shape, order='C')
-        Y[:] = sampling_matrix
+    Y = np.zeros(sampling_matrix.shape, order='C')
+    Y[:] = sampling_matrix
     l_shm = Y.shape[1]
 
     logging.info("Solving ({l_labels} labels, {l_shm} shm, m={m}; img: {imagedims}; " \
@@ -126,8 +123,8 @@ def w1_tv_regularization(f, gtab,
         raise Exception("Dataterm '%s' not supported!" % dataterm)
 
     if use_gpu:
-        from cuda_kernels import prepare_const_gpudata, prepare_kernels
-        from cuda_iterate import pd_iterate_on_gpu
+        from cuda_qbshm_kernels import prepare_const_gpudata, prepare_kernels
+        from cuda_qbshm_iterate import pd_iterate_on_gpu
         const_gpudata = prepare_const_gpudata(b_sph, f, Y, constraint_u, uconstrloc)
         prepared_kernels = prepare_kernels(uk, vk, wk, b_sph, avgskips, dataterm)
 

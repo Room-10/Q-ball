@@ -8,7 +8,7 @@ import cvxpy as cvx
 
 import logging
 
-def w1_tv_regularization(f, gtab, sampling_matrix=None, lbd=10.0):
+def w1_tv_regularization(f, gtab, sampling_matrix, lbd=10.0):
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 
@@ -26,10 +26,9 @@ def w1_tv_regularization(f, gtab, sampling_matrix=None, lbd=10.0):
     p0 = cvxVariable(l_labels, n_image)
     g0 = cvxVariable(n_image, m_gradients, 2)
 
-    Y = np.eye(l_labels)
-    if sampling_matrix is not None:
-        Y = sampling_matrix
-    l_shm = Y.shape[1]
+    Y = np.zeros(sampling_matrix.shape, order='C')
+    Y[:] = sampling_matrix
+    l_shm = Y.shape[1]]
 
     normalize_odf(f, b_sph.b)
     f_flat = f.reshape(l_labels, n_image)

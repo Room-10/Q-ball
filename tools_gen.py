@@ -1,54 +1,19 @@
 
+import itertools
 import numpy as np
+import matplotlib.collections
 from dipy.core.gradients import GradientTable
-from dipy.sims.voxel import single_tensor
+from dipy.sims.voxel import multi_tensor
 
 from manifold_sphere import load_sphere
-from scipy.stats import rice
 
-def rotation_around_axis(v, theta):
-    """Return the matrix that rotates 3D data an angle of theta around
-    the axis v.
-    Parameters
-    ----------
-    v : (3,) ndarray
-        Axis of rotation.
-    theta : float
-        Angle of rotation in radians.
-    References
-    ----------
-    http://en.wikipedia.org/wiki/Rodrigues'_rotation_formula
-    """
-    v = np.asarray(v)
-    if not v.size == 3:
-        raise ValueError("Axis of rotation should be 3D vector.")
-    if not np.isscalar(theta):
-        raise ValueError("Angle of rotation must be scalar.")
+def one_fiber_signal(gtab, angle, snr=None):
+    mevals = np.array([[1500e-6, 300e-6, 300e-6]])
+    signal, sticks = multi_tensor(gtab, mevals,
+        S0=1., angles=[(90,angle)], fractions=[100], snr=snr)
+    return signal
 
-    v = v / np.linalg.norm(v)
-    C = np.array([[ 0,   -v[2], v[1]],
-                  [ v[2], 0,   -v[0]],
-                  [-v[1], v[0], 0]])
-
-    return np.eye(3) + np.sin(theta) * C + (1 - np.cos(theta)) * C.dot(C)
-
-diffusion_evals = np.array([1800e-6, 200e-6, 200e-6]) # mm^2/s
-
-def two_fiber_signal(gtab, angle, w=[0.5, 0.5], SNR=None):
-    angle = angle / 2.
-    R0 = rotation_around_axis([0, 0, 1], np.deg2rad(-angle))
-    R1 = rotation_around_axis([0, 0, 1], np.deg2rad(angle))
-    E = w[0] * single_tensor(gtab, S0=1, evecs=R0, evals=diffusion_evals, snr=SNR)
-    E += w[1] * single_tensor(gtab, S0=1, evecs=R1, evals=diffusion_evals, snr=SNR)
-    return E
-
-def one_fiber_signal(gtab, angle, SNR=None):
-    R = rotation_around_axis([0, 0, 1], np.deg2rad(angle))
-    E = single_tensor(gtab, S0=1, evecs=R, evals=diffusion_evals, snr=SNR)
-    return E
-
-def synthetic(bval=3000):
-    imagedims = (8,)
+def synth_unimodals(bval=3000, imagedims=(8,), jiggle=10):
     d_image = len(imagedims)
     n_image = np.prod(imagedims)
 
@@ -57,16 +22,161 @@ def synthetic(bval=3000):
     gtab = GradientTable(bval * sph.v.T, b0_threshold=0)
 
     S_data = np.stack([
-        one_fiber_signal(gtab, 0+r)
-        for r in 10*np.random.randn(n_image)
+        one_fiber_signal(gtab, 0+r, snr=None)
+        for r in jiggle*np.random.randn(n_image)
     ]).reshape(imagedims + (l_labels,))
-    
-    # add noise
-    np.random.seed(seed=234234)
-    sigma = 0.5   # sigma=0.5, v=0.1 is a good choice
-    v = 0.1
-#    mean, var = rice.stats(v,scale=sigma,moments='mv')
-    noise = rice.rvs(v,scale=sigma,size=S_data.size)
-    S_data += noise.reshape(S_data.shape)
 
     return S_data, gtab
+
+def seg_normal(p1, p2):
+    p1 = np.array(p1)
+    p2 = np.array(p2)
+    v = p2 - p1
+    n = np.array([-v[1], v[0]])
+    n /= np.sum(n**2)**0.5
+    return n
+
+def translate_segs(segs, delta, crop=None):
+    p = np.array(segs[0]) + delta*seg_normal(segs[0], segs[1])
+    result = [tuple(p)]
+    for i in range(1,len(segs)-1):
+        p = np.array(segs[i]) + delta*seg_normal(segs[i-1], segs[i+1])
+        result.append(tuple(p))
+    p = np.array(segs[-1]) + delta*seg_normal(segs[-2], segs[-1])
+    result.append(tuple(p))
+    if crop is not None:
+        crop_segs(result, crop[0], crop[1])
+    return result
+
+def seg_cropped(seg, cropmin, cropmax):
+    tol = 1e-6
+    p1 = np.array(seg[0])
+    p2 = np.array(seg[1])
+    v = p2 - p1
+    t1 = np.zeros(p1.size)
+    t2 = np.ones(p1.size)
+    for i in range(p1.size):
+        if np.abs(v[i]) < tol:
+            if p1[i] < cropmin[i] or p1[i] > cropmax[i]:
+                return None
+        else:
+            t1[i] = (cropmin[i] - p1[i])/v[i]
+            t2[i] = (cropmax[i] - p1[i])/v[i]
+            if t1[i] > t2[i]:
+                t1[i], t2[i] = t2[i], t1[i]
+    t1 = np.amax(np.fmin(1.0, np.fmax(0.0, t1)))
+    t2 = np.amin(np.fmin(1.0, np.fmax(0.0, t2)))
+    if t2-t1 < tol:
+        return None
+    return (tuple(p1 + t1*v), tuple(p1 + t2*v))
+
+def crop_segs(segs, cropmin, cropmax):
+    """ crops segs in place """
+    cropmin = np.array(cropmin)
+    cropmax = np.array(cropmax)
+    i = 0
+    while i < len(segs)-1:
+        s = seg_cropped((segs[i], segs[i+1]), cropmin, cropmax)
+        if s is None:
+            if i == 0:
+                del segs[0]
+            else:
+                del segs[i+1]
+        else:
+            segs[i], segs[i+1] = s
+            i += 1
+
+def compute_dirs(lines, res):
+    dirs = np.zeros((res,res,2))
+    d = 1.0/res
+    for j,l in enumerate(lines):
+        for (x,y) in itertools.product(range(res), repeat=2):
+            cropmin = (d*x,d*y)
+            cropmax = (d*(x+1),d*(y+1))
+            for i in range(len(l)-1):
+                s = seg_cropped((l[i],l[i+1]), cropmin, cropmax)
+                if s is not None:
+                    dirs[x,y,:] -= s[1]
+                    dirs[x,y,:] += s[0]
+    dir_norm = np.amax(np.sum(dirs**2, axis=2)**0.5)
+    dirs *= 1.0/dir_norm
+    return dirs
+
+class FiberPhantom(object):
+    def __init__(self, res):
+        self.res = res
+        self.delta = 1.0/res
+        self.curves = []
+
+    def add_curve(self, c, tmin=0.0, tmax=1.0, n=20):
+        delta_t = (tmax - tmin)/n
+        segs = [c(tmin + i*delta_t) for i in range(n+1)]
+        lines = [
+            translate_segs(segs, 0.0 + 0.03*d, crop=((0.0,0.0),(1.0,1.0))) \
+            for d in range(7)
+        ]
+        dirs = compute_dirs(lines, self.res)
+        self.curves.append({
+            'segs': segs,
+            'lines': lines,
+            'dirs': dirs
+        })
+
+    def plot_curves(self, ax):
+        lines = [l for c in self.curves for l in c['lines']]
+        lc = matplotlib.collections.LineCollection(lines)
+        ax.add_collection(lc)
+
+    def plot_grid(self, ax):
+        gridlines = [ [(self.delta*x,0.0),(self.delta*x,1.0)] for x in range(1,self.res)]
+        gridlines += [ [(0.0,self.delta*y),(1.0,self.delta*y)] for y in range(1,self.res)]
+        lc = matplotlib.collections.LineCollection(gridlines, colors=[(0.0,0.0,0.0,0.3)])
+        ax.add_collection(lc)
+
+    def plot_dirs(self, ax):
+        dir_scaling = 0.07
+        for c in self.curves:
+            dirs = c['dirs']
+            for (x,y) in itertools.product(range(self.res), repeat=2):
+                mid = self.delta*(np.array([x,y]) + 0.5)
+                ax.scatter(mid[0], mid[1], s=3, c='r', linewidths=0)
+                if np.sum(dirs[x,y,:]**2)**0.5 > 1e-6:
+                    data = np.array([
+                        mid[:] - 0.5*dir_scaling*dirs[x,y,:],
+                        mid[:] + 0.5*dir_scaling*dirs[x,y,:]
+                    ]).T
+                    ax.plot(data[0], data[1], 'r')
+
+    def gen_hardi(self, snr=20):
+        bval = 3000
+        sph = load_sphere(refinement=2)
+        gtab = GradientTable(bval * sph.v.T, b0_threshold=0)
+        l_labels = gtab.bvecs.shape[0]
+        val_base = 1e-6*300
+        S_data = np.zeros((self.res, self.res, l_labels), order='C')
+        for (x,y) in itertools.product(range(self.res), repeat=2):
+            mid = self.delta*(np.array([x,y]) + 0.5)
+            norms = [np.sum(c['dirs'][x,y,:]**2)**0.5 for c in self.curves]
+            if sum(norms) < 1e-6:
+                mevals = np.array([[val_base, val_base, val_base]])
+                sticks = np.array([[1,0,0]])
+                fracs = [100]
+            else:
+                fracs = 100.0*np.array(norms)/sum(norms)
+                mevals = np.array([
+                    [(1.0+norm*4.0)*val_base, val_base, val_base]
+                    for norm in norms
+                ])
+                sticks = np.array([
+                    [c['dirs'][x,y,0], c['dirs'][x,y,1], 0]
+                    for c in self.curves
+                ])
+                for i,norm in enumerate(norms):
+                    if norm < 1e-6:
+                        sticks[i,:] = [1,0,0]
+                    else:
+                        sticks[i] /= norm
+            signal, _ = multi_tensor(gtab, mevals,
+                S0=1., angles=sticks, fractions=fracs, snr=snr)
+            S_data[x,y,:] = signal
+        return S_data
