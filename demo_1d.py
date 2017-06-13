@@ -98,7 +98,9 @@ fvtk.add(r, fvtk.sphere_funcs(plotdata, qball_sphere, colormap='jet',
 
 if len(sys.argv) > 1:
     logging.info("Store plot.")
+    from util import output_dir_create
+    output_dir_create("pic")
     r.reset_clipping_range()
-    fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname='plot_1d.png')
+    fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname='pic/plot_1d.png')
 else:
     fvtk.show(r, size=(1024, 768))
