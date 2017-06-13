@@ -73,7 +73,7 @@ else:
 #    Q-ball data preparation
 # ==============================================================================
 
-gtab, S_data = p.gen_hardi(snr=None)
+gtab, S_data = p.gen_hardi(snr=20)
 
 l_labels = S_data.shape[-1]
 imagedims = S_data.shape[:-1]
@@ -85,30 +85,30 @@ qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
 models = [
     AganjModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
 #    AganjWassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-#    WassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    WassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
 ]
 logging.info("Model fitting.")
-us = [np.zeros(S_data.shape).T for m in range(len(models))]
+us = [np.zeros((l_labels,) + imagedims, order='C') for m in range(len(models))]
 for (j,m) in enumerate(models):
     logging.info("Model: %s" % type(m).__name__)
     u = m.fit(S_data).odf(qball_sphere)
     u = np.clip(u, 0, np.max(u, -1)[..., None])
     us[j][:] = u.T
 
-logging.info("Model from SSVM")
-us.append(np.zeros(S_data.shape).T)
-params = {
-    'lbd': 0.9,
-    'term_relgap': 1e-05,
-    'term_maxiter': 80000,
-    'granularity': 5000,
-    'step_factor': 0.0001,
-    'step_bound': 1.3,
-    'dataterm': "W1",
-    'use_gpu': True
-}
-pd_state, details = w1_tv_regularization(us[0], gtab, **params)
-us[-1][:] = pd_state[0]
+#logging.info("Model from SSVM")
+#us.append(np.zeros(S_data.shape).T)
+#params = {
+#    'lbd': 0.9,
+#    'term_relgap': 1e-05,
+#    'term_maxiter': 80000,
+#    'granularity': 5000,
+#    'step_factor': 0.0001,
+#    'step_bound': 1.3,
+#    'dataterm': "W1",
+#    'use_gpu': True
+#}
+#pd_state, details = w1_tv_regularization(us[0], gtab, **params)
+#us[-1][:] = pd_state[0]
 us.reverse()
 
 # ==============================================================================

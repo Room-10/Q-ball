@@ -24,7 +24,7 @@ import tools_gen as gen
 
 logging.info("Data setup.")
 #np.random.seed(seed=234234)
-S_data, gtab = gen.synthetic_unimodals()
+S_data, gtab = gen.synth_unimodals()
 
 l_labels = S_data.shape[-1]
 imagedims = S_data.shape[:-1]
@@ -50,7 +50,7 @@ models = [
 ]
 
 logging.info("Model fitting.")
-us = [np.zeros(S_data.shape).T for m in range(len(models))]
+us = [np.zeros((l_labels,) + imagedims, order='C') for m in range(len(models))]
 for (j,m) in enumerate(models):
     logging.info("Model: %s" % type(m).__name__)
     u = m.fit(S_data).odf(qball_sphere)
@@ -60,10 +60,10 @@ for (j,m) in enumerate(models):
 logging.info("Model from SSVM")
 us.append(np.zeros(S_data.shape).T)
 params = {
-    'lbd': 0.9,
-    'term_relgap': 1e-7,
-    'term_maxiter': 80000,
-    'granularity': 2000,
+    'lbd': 2.5,
+    'term_relgap': 1e-05,
+    'term_maxiter': 100000,
+    'granularity': 5000,
     'step_factor': 0.0001,
     'step_bound': 1.3,
     'dataterm': "W1",
@@ -101,4 +101,4 @@ if len(sys.argv) > 1:
     r.reset_clipping_range()
     fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname='plot_1d.png')
 else:
-    fvtk.show(r, size=(768, 1024))
+    fvtk.show(r, size=(1024, 768))

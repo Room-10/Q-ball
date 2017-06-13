@@ -9,12 +9,12 @@ import numpy as np
 import logging
 
 def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix,
-        lbd=50.0,
+        lbd=1.0,
         term_relgap=1e-7,
         term_infeas=None,
-        term_maxiter=20000,
-        step_bound=0.001,
-        step_factor=0.00005,
+        term_maxiter=150000,
+        step_bound=0.0012,
+        step_factor=0.001,
         granularity=5000,
         use_gpu=True,
         constraint_u=None,
