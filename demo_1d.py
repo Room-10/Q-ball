@@ -6,6 +6,7 @@ logging.basicConfig(
     format="[%(relativeCreated) 8d] %(message)s",
     level=logging.DEBUG
 )
+logging.info("Running from command line: %s" % sys.argv)
 
 import numpy as np
 import dipy.core.sphere
@@ -16,6 +17,10 @@ from model_wtv import WassersteinModel, WassersteinModelGPU, WassersteinModelCVX
 from model_aganj_wtv import AganjWassersteinModel, AganjWassersteinModelGPU, AganjWassersteinModelCVX
 from solve_qb_cuda import w1_tv_regularization
 import tools_gen as gen
+
+# ==============================================================================
+#    Q-ball data preparation
+# ==============================================================================
 
 logging.info("Data setup.")
 #np.random.seed(seed=234234)
@@ -68,6 +73,10 @@ pd_state, details = w1_tv_regularization(us[0], gtab, **params)
 us[-1][:] = pd_state[0]
 us.reverse()
 
+# ==============================================================================
+#    Q-ball plot
+# ==============================================================================
+
 logging.info("Plot result. Top to bottom:\n%s\nModel from SSVM"
     % "\n".join(type(m).__name__  for m in models))
 if d_image == 2:
@@ -86,7 +95,10 @@ plot_norm = False
 r = fvtk.ren()
 fvtk.add(r, fvtk.sphere_funcs(plotdata, qball_sphere, colormap='jet',
                               norm=plot_norm, scale=plot_scale))
-fvtk.show(r, size=(1024, 768))
 
-#logging.info("Store plot.")
-#fvtk.record(r, out_path='Aganj.png', size=(1024, 768))
+if len(sys.argv) > 1:
+    logging.info("Store plot.")
+    r.reset_clipping_range()
+    fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname='plot_1d.png')
+else:
+    fvtk.show(r, size=(768, 1024))

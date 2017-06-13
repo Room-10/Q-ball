@@ -179,4 +179,4 @@ class FiberPhantom(object):
             signal, _ = multi_tensor(gtab, mevals,
                 S0=1., angles=sticks, fractions=fracs, snr=snr)
             S_data[x,y,:] = signal
-        return S_data
+        return gtab, S_data

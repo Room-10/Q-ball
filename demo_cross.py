@@ -8,6 +8,7 @@ logging.basicConfig(
     format="[%(relativeCreated) 8d] %(message)s",
     level=logging.DEBUG
 )
+logging.info("Running from command line: %s" % sys.argv)
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,7 +24,7 @@ from solve_qb_cuda import w1_tv_regularization
 from tools_gen import FiberPhantom
 
 # ==============================================================================
-#    Raw data preparation
+#    Fiber phantom preparation
 # ==============================================================================
 
 res = 15
@@ -37,7 +38,7 @@ p.add_curve(lambda t: (t,f1(t)), tmin=-0.2, tmax=f1inv(1.0)+0.2)
 p.add_curve(lambda t: (t,f2(t)), tmin=f2inv(1.0)-0.2, tmax=f2inv(0.0)+0.2)
 
 # ==============================================================================
-#    2d plot
+#    Fiber phantom plot
 # ==============================================================================
 
 fig = plt.figure(figsize=(15,5))
@@ -60,8 +61,13 @@ p.plot_grid(ax)
 ax = fig.add_subplot(133, **subplot_opts)
 p.plot_dirs(ax)
 
-plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, wspace=0.1, hspace=0)
-plt.show()
+plt.subplots_adjust(left=0.02, bottom=0.02, right=0.98, top=0.98,
+    wspace=0.03, hspace=0)
+
+if len(sys.argv) > 1:
+    plt.savefig("plot_cross_phantom.pdf")
+else:
+    plt.show()
 
 # ==============================================================================
 #    Q-ball data preparation
@@ -93,9 +99,9 @@ logging.info("Model from SSVM")
 us.append(np.zeros(S_data.shape).T)
 params = {
     'lbd': 0.9,
-    'term_relgap': 1e-7,
+    'term_relgap': 1e-05,
     'term_maxiter': 80000,
-    'granularity': 2000,
+    'granularity': 5000,
     'step_factor': 0.0001,
     'step_bound': 1.3,
     'dataterm': "W1",
@@ -129,5 +135,10 @@ plot_norm = False
 r = fvtk.ren()
 fvtk.add(r, fvtk.sphere_funcs(plotdata, qball_sphere, colormap='jet',
                               norm=plot_norm, scale=plot_scale))
-fvtk.show(r, size=(1024, 768))
 
+if len(sys.argv) > 1:
+    logging.info("Store plot.")
+    r.reset_clipping_range()
+    fvtk.snapshot(r, size=(1500,2000), offscreen=True, fname='plot_cross.png')
+else:
+    fvtk.show(r, size=(768, 1024))
