@@ -46,6 +46,7 @@ def w1_tv_regularization(f, gtab,
     l_labels = b_sph.mdims['l_labels']
     s_manifold = b_sph.mdims['s_manifold']
     m_gradients = b_sph.mdims['m_gradients']
+    r_points = b_sph.mdims['r_points']
     assert(f.shape[0] == l_labels)
 
     logging.info("Solving ({l_labels} labels, m={m}; img: {imagedims}; " \
@@ -127,47 +128,102 @@ def w1_tv_regularization(f, gtab,
     else:
         raise Exception("Dataterm '%s' not supported!" % dataterm)
 
+    constvars = {
+        'f': f,
+        'constraint_u': constraint_u,
+        'uconstrloc': uconstrloc,
+        'sigma': sigma,
+        'tau': tau,
+        'theta': theta,
+        'lbd': lbd,
+        'avgskips': avgskips,
+        'dataterm': dataterm,
+    }
+
+    itervars = {
+         'uk': uk,
+         'wk': wk,
+         'w0k': w0k,
+         'ukp1': ukp1,
+         'wkp1': wkp1,
+         'w0kp1': w0kp1,
+         'ubark': ubark,
+         'wbark': wbark,
+         'w0bark': w0bark,
+         'pk': pk,
+         'gk': gk,
+         'qk': qk,
+         'p0k': p0k,
+         'g0k': g0k,
+         'pkp1': pkp1,
+         'gkp1': gkp1,
+         'qkp1': qkp1,
+         'p0kp1': p0kp1,
+         'g0kp1': g0kp1
+    }
+
+    extravars = {
+        'dataterm_factor': dataterm_factor,
+        'g_norms': g_norms,
+        'b_sph': b_sph
+    }
+
     if use_gpu:
-        from cuda_qb_kernels import prepare_const_gpudata, prepare_kernels
-        from cuda_qb_iterate import pd_iterate_on_gpu
-        const_gpudata = prepare_const_gpudata(b_sph, f, constraint_u, uconstrloc)
-        prepared_kernels = prepare_kernels(uk, wk, b_sph, avgskips, dataterm)
+        from tools_cuda import prepare_kernels, iterate_on_gpu
+        gpu_constvars = dict(constvars)
+        gpu_constvars['b'] = b_sph.b
+        gpu_constvars['A'] = b_sph.A
+        gpu_constvars['B'] = b_sph.B
+        gpu_constvars['P'] = b_sph.P
+        gpu_constvars['b_precond'] = b_sph.b_precond
+        gpu_constvars['imagedims'] = np.array(imagedims, dtype=np.int64)
+        gpu_constvars['l_labels'] = l_labels
+        gpu_constvars['n_image'] = n_image
+        gpu_constvars['m_gradients'] = m_gradients
+        gpu_constvars['s_manifold'] = s_manifold
+        gpu_constvars['d_image'] = d_image
+        gpu_constvars['r_points'] = r_points
+        gpu_constvars['navgskips'] = 1 << (d_image - 1)
+        skips = (1,)
+        for t in range(1,d_image):
+            skips += (skips[-1]*imagedims[d_image-t],)
+        gpu_constvars['skips'] = np.array(skips, dtype=np.int64, order='C')
+        gpu_constvars['dataterm'] = dataterm[0].upper()
+        gpu_constvars['nd_skip'] = d_image*n_image
+        gpu_constvars['ld_skip'] = d_image*l_labels
+        gpu_constvars['sd_skip'] = s_manifold*d_image
+        gpu_constvars['ss_skip'] = s_manifold*s_manifold
+        gpu_constvars['sr_skip'] = s_manifold*r_points
+        gpu_constvars['sm_skip'] = s_manifold*m_gradients
+        gpu_constvars['msd_skip'] = m_gradients*s_manifold*d_image
+        gpu_constvars['ndl_skip'] = n_image*d_image*l_labels
+        cuda_templates = [
+            ("DualKernel1", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("DualKernel2", (l_labels, n_image, d_image), (16, 16, 1)),
+            ("DualKernel3", (n_image, m_gradients, 1), (16, 16, 1)),
+            ("PrimalKernel1", (l_labels, 1, 1), (16, 1, 1)),
+            ("PrimalKernel2", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1))
+        ]
+        cuda_files = ['cuda_qb_primal.cu', 'cuda_qb_dual.cu']
+        cuda_kernels, cuda_vars = prepare_kernels(cuda_files, cuda_templates,
+                                                  gpu_constvars, itervars)
 
     with util.GracefulInterruptHandler() as interrupt_hdl:
         _iter = 0
         while _iter < term_maxiter:
             if use_gpu:
-                iterations = pd_iterate_on_gpu(uk, wk, w0k,
-                                  ubark, wbark, w0bark,
-                                  ukp1, wkp1, w0kp1,
-                                  pk, gk, qk, p0k, g0k,
-                                  pkp1, gkp1, qkp1, p0kp1, g0kp1,
-                                  sigma, tau, lbd, theta,
-                                  const_gpudata, prepared_kernels,
-                                  granularity)
+                iterations = iterate_on_gpu(cuda_kernels, cuda_vars, granularity)
                 _iter += iterations
                 if iterations < granularity:
                     interrupt_hdl.handle(None, None)
             else:
-                pd_iteration_step(uk, wk, w0k,
-                                  ubark, wbark, w0bark,
-                                  ukp1, wkp1, w0kp1,
-                                  pk, gk, qk, p0k, g0k,
-                                  pkp1, gkp1, qkp1, p0kp1, g0kp1,
-                                  sigma, tau, lbd, theta, dataterm_factor,
-                                  b_sph, f, constraint_u, uconstrloc,
-                                  dataterm, avgskips, g_norms)
+                pd_iteration_step(**itervars, **constvars, **extravars)
                 _iter += 1
 
             if interrupt_hdl.interrupted or _iter % granularity == 0:
-                obj_p, infeas_p = compute_primal_obj(ukp1, wkp1, w0kp1,
-                                                     pkp1, gkp1, qkp1, p0kp1, g0kp1,
-                                                     lbd, f, b_sph, constraint_u, uconstrloc,
-                                                     dataterm, avgskips, g_norms)
-                obj_d, infeas_d = compute_dual_obj(ukp1, wkp1, w0kp1,
-                                                   pkp1, gkp1, qkp1, p0kp1, g0kp1,
-                                                   lbd, f, b_sph, constraint_u, uconstrloc,
-                                                   dataterm, avgskips, g_norms)
+                obj_p, infeas_p = compute_primal_obj(**itervars, **constvars, **extravars)
+                obj_d, infeas_d = compute_dual_obj(**itervars, **constvars, **extravars)
 
                 # compute relative primal-dual gap
                 relgap = (obj_p - obj_d) / max(np.spacing(1), obj_d)
