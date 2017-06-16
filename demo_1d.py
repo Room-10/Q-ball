@@ -10,11 +10,10 @@ logging.info("Running from command line: %s" % sys.argv)
 
 import numpy as np
 import dipy.core.sphere
-from dipy.reconst.shm import CsaOdfModel as AganjModel
 from dipy.viz import fvtk
+from dipy.reconst.shm import CsaOdfModel as AganjModel
 
 from models import SSVMModel, WassersteinModel, AganjWassersteinModel
-from solve_qb_cuda import w1_tv_regularization
 import tools_gen as gen
 
 # ==============================================================================
@@ -60,6 +59,10 @@ models = [
         'sphere': qball_sphere
     }),
 #    (AganjWassersteinModel(gtab, **base_params), {
+#        'solver_engine': 'cvx',
+#        'solver_params': { 'lbd': 10.0, }
+#    }),
+#    (AganjWassersteinModel(gtab, **base_params), {
 #        'solver_engine': 'pd',
 #        'solver_params': {
 #            'lbd': 10.0,
@@ -71,6 +74,10 @@ models = [
 #            'dataterm': "W1",
 #            'use_gpu': True
 #        }
+#    }),
+#    (WassersteinModel(gtab, **base_params), {
+#        'solver_engine': 'cvx',
+#        'solver_params': { 'lbd': 1.0, }
 #    }),
 #    (WassersteinModel(gtab, **base_params), {
 #        'solver_engine': 'pd',
@@ -100,7 +107,7 @@ us.reverse()
 # ==============================================================================
 
 logging.info("Plot result. Top to bottom:\n%s"
-    % "\n".join(type(m).__name__  for m in models))
+    % "\n".join(type(m[0]).__name__  for m in models))
 if d_image == 2:
     uniform_odf = np.ones((l_labels,), order='C')/l_labels
     spacing = np.tile(uniform_odf, (1, imagedims[1], 1)).T

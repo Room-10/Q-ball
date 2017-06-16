@@ -116,32 +116,7 @@ def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
             for t in range(d_image):
                 wk[i,j,:,t] = w_constr[(j*n_image + i)*d_image + t].dual_value.ravel()
 
-    from solve_hardi_pd import compute_primal_obj, compute_dual_obj
-    from tools_diff import staggered_diff_avgskips
-    constraint_u = np.zeros((l_labels,) + imagedims, order='C')
-    constraint_u[:] = np.nan
-    uconstrloc = np.any(np.logical_not(np.isnan(constraint_u)), axis=0)
-    avgskips = staggered_diff_avgskips(imagedims)
-    g_norms = np.zeros((n_image, m_gradients), order='C')
-    obj_p, infeas_p = compute_primal_obj(u1k, u2k, vk, wk,
-                           pk, gk, q0k, q1k, q2k,
-                           lbd, f, Y, M, b_sph, constraint_u, uconstrloc,
-                           avgskips, g_norms)
-    obj_d, infeas_d = compute_dual_obj(u1k, u2k, vk, wk,
-                           pk, gk, q0k, q1k, q2k,
-                           lbd, f, Y, M, b_sph, constraint_u, uconstrloc,
-                           avgskips, g_norms)
-    relgap = (obj_p - obj_d) / max(np.spacing(1), obj_d)
-    logging.debug("{}: objp = {: 9.6g} ({: 9.6g}), " \
-        "objd = {: 9.6g} ({: 9.6g}), " \
-        "gap = {: 9.6g}, " \
-        "relgap = {: 9.6g} ".format(
-        prob.status, obj_p, infeas_p,
-        prob.value, infeas_d,
-        obj_p - obj_d,
-        relgap
-    ))
-
+    logging.debug("{}: objd = {: 9.6g}".format(prob.status, prob.value))
     return (u1k, u2k, vk, wk, pk, gk, q0k, q1k, q2k), {
         'objp': prob.value,
         'status': prob.status

@@ -15,6 +15,8 @@ class SSVMModel(CsaOdfModel):
         u = CsaOdfModel.fit(self, *args, **kwargs).odf(sphere)
         u = np.array(np.clip(u, 0, np.max(u, -1)[..., None]).T, order='C')
         pd_state, details = w1_tv_regularization(u, self.gtab, **solver_params)
+        self.solver_state = pd_state
+        self.solver_details = details
         return TrivialOdfFit(pd_state[0].T, sphere)
 
 class TrivialOdfFit(OdfFit):
@@ -46,6 +48,8 @@ class AganjWassersteinModel(CsaOdfModel):
         f[:] = np.dot(sh_coef, self.B.T).T
         pd_state, details = self.solver_func(f, self.gtab,
             sampling_matrix=self.B, **self.solver_params)
+        self.solver_state = pd_state
+        self.solver_details = details
         sh_coef = pd_state[1].T.reshape(sh_coef.shape)
         return sh_coef
 
@@ -76,6 +80,8 @@ class WassersteinModel(QballBaseModel):
         Minv[1:] = 1.0/self._fit_matrix[1:]
         pd_state, details = self.solver_func(data, self.gtab,
             sampling_matrix=self.B, model_matrix=Minv, **self.solver_params)
+        self.solver_state = pd_state
+        self.solver_details = details
         sh_coef = pd_state[2].T.reshape(data.shape[:-1]+(self.B.shape[1],))
         sh_coef[..., 0] = self._n0_const
         return sh_coef
