@@ -6,9 +6,13 @@ import numpy as np
 from numpy.linalg import norm
 from numba import jit
 
-def compute_primal_obj(u1kp1, u2kp1, vkp1, wkp1,
+def compute_primal_obj(u1k, u2k, vk, wk,
+                       u1bark, u2bark, vbark, wbark,
+                       u1kp1, u2kp1, vkp1, wkp1,
+                       pk, gk, q0k, q1k, q2k,
                        pkp1, gkp1, q0kp1, q1kp1, q2kp1,
-                       lbd, f, Y, M, b_sph, constraint_u, uconstrloc,
+                       sigma, tau, lbd, theta, dataterm_factor,
+                       b_sph, f, Y, M, constraint_u, uconstrloc,
                        avgskips, g_norms):
     pgrad = pkp1.copy()
     ggrad = gkp1.copy()
@@ -41,9 +45,13 @@ def compute_primal_obj(u1kp1, u2kp1, vkp1, wkp1,
 
     return obj_p, infeas_p
 
-def compute_dual_obj(u1kp1, u2kp1, vkp1, wkp1,
+def compute_dual_obj(u1k, u2k, vk, wk,
+                     u1bark, u2bark, vbark, wbark,
+                     u1kp1, u2kp1, vkp1, wkp1,
+                     pk, gk, q0k, q1k, q2k,
                      pkp1, gkp1, q0kp1, q1kp1, q2kp1,
-                     lbd, f, Y, M, b_sph, constraint_u, uconstrloc,
+                     sigma, tau, lbd, theta, dataterm_factor,
+                     b_sph, f, Y, M, constraint_u, uconstrloc,
                      avgskips, g_norms):
     u1grad = u1kp1.copy()
     u2grad = u2kp1.copy()

@@ -170,33 +170,34 @@ def w1_tv_regularization(f, gtab,
 
     if use_gpu:
         from tools_cuda import prepare_kernels, iterate_on_gpu
-        gpu_constvars = dict(constvars)
-        gpu_constvars['b'] = b_sph.b
-        gpu_constvars['A'] = b_sph.A
-        gpu_constvars['B'] = b_sph.B
-        gpu_constvars['P'] = b_sph.P
-        gpu_constvars['b_precond'] = b_sph.b_precond
-        gpu_constvars['imagedims'] = np.array(imagedims, dtype=np.int64)
-        gpu_constvars['l_labels'] = l_labels
-        gpu_constvars['n_image'] = n_image
-        gpu_constvars['m_gradients'] = m_gradients
-        gpu_constvars['s_manifold'] = s_manifold
-        gpu_constvars['d_image'] = d_image
-        gpu_constvars['r_points'] = r_points
-        gpu_constvars['navgskips'] = 1 << (d_image - 1)
         skips = (1,)
-        for t in range(1,d_image):
-            skips += (skips[-1]*imagedims[d_image-t],)
-        gpu_constvars['skips'] = np.array(skips, dtype=np.int64, order='C')
-        gpu_constvars['dataterm'] = dataterm[0].upper()
-        gpu_constvars['nd_skip'] = d_image*n_image
-        gpu_constvars['ld_skip'] = d_image*l_labels
-        gpu_constvars['sd_skip'] = s_manifold*d_image
-        gpu_constvars['ss_skip'] = s_manifold*s_manifold
-        gpu_constvars['sr_skip'] = s_manifold*r_points
-        gpu_constvars['sm_skip'] = s_manifold*m_gradients
-        gpu_constvars['msd_skip'] = m_gradients*s_manifold*d_image
-        gpu_constvars['ndl_skip'] = n_image*d_image*l_labels
+        for d in reversed(imagedims[1:]):
+            skips += (skips[-1]*d,)
+        gpu_constvars = dict(constvars, **{
+            'b': b_sph.b,
+            'A': b_sph.A,
+            'B': b_sph.B,
+            'P': b_sph.P,
+            'b_precond': b_sph.b_precond,
+            'imagedims': np.array(imagedims, dtype=np.int64, order='C'),
+            'l_labels': l_labels,
+            'n_image': n_image,
+            'm_gradients': m_gradients,
+            's_manifold': s_manifold,
+            'd_image': d_image,
+            'r_points': r_points,
+            'navgskips': 1 << (d_image - 1),
+            'skips': np.array(skips, dtype=np.int64, order='C'),
+            'dataterm': dataterm[0].upper(),
+            'nd_skip': d_image*n_image,
+            'ld_skip': d_image*l_labels,
+            'sd_skip': s_manifold*d_image,
+            'ss_skip': s_manifold*s_manifold,
+            'sr_skip': s_manifold*r_points,
+            'sm_skip': s_manifold*m_gradients,
+            'msd_skip': m_gradients*s_manifold*d_image,
+            'ndl_skip': n_image*d_image*l_labels,
+        })
         cuda_templates = [
             ("DualKernel1", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
             ("DualKernel2", (l_labels, n_image, d_image), (16, 16, 1)),
@@ -205,7 +206,7 @@ def w1_tv_regularization(f, gtab,
             ("PrimalKernel2", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
             ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1))
         ]
-        cuda_files = ['cuda_qb_primal.cu', 'cuda_qb_dual.cu']
+        cuda_files = ['solve_qb_cuda_primal.cu', 'solve_qb_cuda_dual.cu']
         cuda_kernels, cuda_vars = prepare_kernels(cuda_files, cuda_templates,
                                                   gpu_constvars, itervars)
 

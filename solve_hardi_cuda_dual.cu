@@ -1,12 +1,5 @@
 
-__global__ void DualKernel1(double *u1k, double *u2k, double *vk, double *wk,
-                            double *u1bark, double *u2bark, double *vbark, double *wbark,
-                            double *pk, double *gk, double *q0k, double *q1k, double *q2k,
-                            double *pkp1, double *gkp1, double *q0kp1, double *q1kp1, double *q2kp1,
-                            double *b, double *A, double *B, long *P,
-                            double *f, double *Y, double *M, double sigma, double tau, double theta,
-                            double lbd, double b_precond,
-                            double *constraint_u, unsigned char *uconstrloc)
+__global__ void DualKernel1(KERNEL_PARAMS)
 {
     /* gkp1^ij = A^j' wbark^ij
      * gkp1 = gk + sigma*gkp1
@@ -74,14 +67,7 @@ __global__ void DualKernel1(double *u1k, double *u2k, double *vk, double *wk,
     }
 }
 
-__global__ void DualKernel2(double *u1k, double *u2k, double *vk, double *wk,
-                            double *u1bark, double *u2bark, double *vbark, double *wbark,
-                            double *pk, double *gk, double *q0k, double *q1k, double *q2k,
-                            double *pkp1, double *gkp1, double *q0kp1, double *q1kp1, double *q2kp1,
-                            double *b, double *A, double *B, long *P,
-                            double *f, double *Y, double *M, double sigma, double tau, double theta,
-                            double lbd, double b_precond,
-                            double *constraint_u, unsigned char *uconstrloc)
+__global__ void DualKernel2(KERNEL_PARAMS)
 {
     /* pkp1 += diag(b) D u1bark (D is the gradient on a staggered grid)
      * pkp1 = pk + sigma*pkp1
@@ -154,14 +140,7 @@ __global__ void DualKernel2(double *u1k, double *u2k, double *vk, double *wk,
     }
 }
 
-__global__ void DualKernel3(double *u1k, double *u2k, double *vk, double *wk,
-                            double *u1bark, double *u2bark, double *vbark, double *wbark,
-                            double *pk, double *gk, double *q0k, double *q1k, double *q2k,
-                            double *pkp1, double *gkp1, double *q0kp1, double *q1kp1, double *q2kp1,
-                            double *b, double *A, double *B, long *P,
-                            double *f, double *Y, double *M, double sigma, double tau, double theta,
-                            double lbd, double b_precond,
-                            double *constraint_u, unsigned char *uconstrloc)
+__global__ void DualKernel3(KERNEL_PARAMS)
 {
     /* This function makes heavy use of registers (34 32-bit registers), so
      * that it will not run with more than 960 threads per block on compute

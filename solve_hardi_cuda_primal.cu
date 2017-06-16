@@ -1,12 +1,5 @@
 
-__global__ void PrimalKernel1(double *u1k, double *u2k, double *vk, double *wk,
-                              double *u1bark, double *u2bark, double *vbark, double *wbark,
-                              double *pk, double *gk, double *q0k, double *q1k, double *q2k,
-                              double *pkp1, double *gkp1, double *q0kp1, double *q1kp1, double *q2kp1,
-                              double *b, double *A, double *B, long *P,
-                              double *f, double *Y, double *M, double sigma, double tau, double theta,
-                              double lbd, double b_precond,
-                              double *constraint_u, unsigned char *uconstrloc)
+__global__ void PrimalKernel1(KERNEL_PARAMS)
 {
     /* u1bark = 0
      * u1bark += diag(b) D' pkp1 (D' = -div with Dirichlet boundary)
@@ -52,14 +45,7 @@ __global__ void PrimalKernel1(double *u1k, double *u2k, double *vk, double *wk,
     }
 }
 
-__global__ void PrimalKernel2(double *u1k, double *u2k, double *vk, double *wk,
-                              double *u1bark, double *u2bark, double *vbark, double *wbark,
-                              double *pk, double *gk, double *q0k, double *q1k, double *q2k,
-                              double *pkp1, double *gkp1, double *q0kp1, double *q1kp1, double *q2kp1,
-                              double *b, double *A, double *B, long *P,
-                              double *f, double *Y, double *M, double sigma, double tau, double theta,
-                              double lbd, double b_precond,
-                              double *constraint_u, unsigned char *uconstrloc)
+__global__ void PrimalKernel2(KERNEL_PARAMS)
 {
     /* wbark^ij = A^j gkp1_t^ij - B^j P^j pkp1_t^i
      * wbark = wk - tau*wbark
@@ -101,16 +87,10 @@ __global__ void PrimalKernel2(double *u1k, double *u2k, double *vk, double *wk,
     wbark[i*msd_skip + j*sd_skip + l*d_image + t] = wbark_tmp
         + theta*(wbark_tmp - wk[i*msd_skip + j*sd_skip + l*d_image + t]);
     wk[i*msd_skip + j*sd_skip + l*d_image + t] = wbark_tmp;
+    wkp1[i*msd_skip + j*sd_skip + l*d_image + t] = wbark_tmp;
 }
 
-__global__ void PrimalKernel3(double *u1k, double *u2k, double *vk, double *wk,
-                              double *u1bark, double *u2bark, double *vbark, double *wbark,
-                              double *pk, double *gk, double *q0k, double *q1k, double *q2k,
-                              double *pkp1, double *gkp1, double *q0kp1, double *q1kp1, double *q2kp1,
-                              double *b, double *A, double *B, long *P,
-                              double *f, double *Y, double *M, double sigma, double tau, double theta,
-                              double lbd, double b_precond,
-                              double *constraint_u, unsigned char *uconstrloc)
+__global__ void PrimalKernel3(KERNEL_PARAMS)
 {
     /* u1bark += b q0kp1' - q1kp1
      * u1bark = u1k - tau*u1bark
@@ -148,6 +128,7 @@ __global__ void PrimalKernel3(double *u1k, double *u2k, double *vk, double *wk,
 
     u1bark[k*n_image + i] = ubark_tmp + theta*(ubark_tmp - u1k[k*n_image + i]);
     u1k[k*n_image + i] = ubark_tmp;
+    u1kp1[k*n_image + i] = ubark_tmp;
 
     ubark_tmp = 0.0;
     ubark_tmp -= q2kp1[k*n_image + i];
@@ -156,16 +137,10 @@ __global__ void PrimalKernel3(double *u1k, double *u2k, double *vk, double *wk,
 
     u2bark[k*n_image + i] = ubark_tmp + theta*(ubark_tmp - u2k[k*n_image + i]);
     u2k[k*n_image + i] = ubark_tmp;
+    u2kp1[k*n_image + i] = ubark_tmp;
 }
 
-__global__ void PrimalKernel4(double *u1k, double *u2k, double *vk, double *wk,
-                              double *u1bark, double *u2bark, double *vbark, double *wbark,
-                              double *pk, double *gk, double *q0k, double *q1k, double *q2k,
-                              double *pkp1, double *gkp1, double *q0kp1, double *q1kp1, double *q2kp1,
-                              double *b, double *A, double *B, long *P,
-                              double *f, double *Y, double *M, double sigma, double tau, double theta,
-                              double lbd, double b_precond,
-                              double *constraint_u, unsigned char *uconstrloc)
+__global__ void PrimalKernel4(KERNEL_PARAMS)
 {
     /* vbark^i = Y'q1kp1^i + M Y'q2kp1^i
      * vbark = vk - tau*vbark
@@ -194,4 +169,5 @@ __global__ void PrimalKernel4(double *u1k, double *u2k, double *vk, double *wk,
 
     vbark[m*n_image + i] = vbark_tmp + theta*(vbark_tmp - vk[m*n_image + i]);
     vk[m*n_image + i] = vbark_tmp;
+    vkp1[m*n_image + i] = vbark_tmp;
 }
