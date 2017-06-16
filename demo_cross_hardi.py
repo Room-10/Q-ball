@@ -30,7 +30,7 @@ class MyExperiment(util.QBallExperiment):
                 'term_maxiter': 150000,
                 'granularity': 5000,
                 'step_factor': 0.001,
-                'step_bound': 0.0012,
+                'step_bound': 0.001,
                 'use_gpu': True
             },
         }
