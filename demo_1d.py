@@ -13,8 +13,7 @@ import dipy.core.sphere
 from dipy.reconst.shm import CsaOdfModel as AganjModel
 from dipy.viz import fvtk
 
-from model_wtv import WassersteinModel, WassersteinModelGPU, WassersteinModelCVX
-from model_aganj_wtv import AganjWassersteinModel, AganjWassersteinModelGPU, AganjWassersteinModelCVX
+from models import SSVMModel, WassersteinModel, AganjWassersteinModel
 from solve_qb_cuda import w1_tv_regularization
 import tools_gen as gen
 
@@ -39,45 +38,68 @@ b_vecs = gtab.bvecs[gtab.bvals > 0,...]
 qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
 
 logging.info("Model setup.")
+base_params = {
+    'sh_order': 6,
+    'smooth': 0,
+    'min_signal': 0,
+    'assume_normed': True
+}
 models = [
-    AganjModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-#    AganjWassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-#    AganjWassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-#    AganjWassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-#    WassersteinModelGPU(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-#    WassersteinModel(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
-#    WassersteinModelCVX(gtab, sh_order=6, smooth=0, min_signal=0, assume_normed=True),
+    (AganjModel(gtab, **base_params), {}),
+    (SSVMModel(gtab, **base_params), {
+        'solver_params': {
+            'lbd': 2.5,
+            'term_relgap': 1e-05,
+            'term_maxiter': 100000,
+            'granularity': 5000,
+            'step_factor': 0.0001,
+            'step_bound': 1.3,
+            'dataterm': "W1",
+            'use_gpu': True
+        },
+        'sphere': qball_sphere
+    }),
+#    (AganjWassersteinModel(gtab, **base_params), {
+#        'solver_engine': 'pd',
+#        'solver_params': {
+#            'lbd': 10.0,
+#            'term_relgap': 1e-05,
+#            'term_maxiter': 20000,
+#            'granularity': 5000,
+#            'step_factor': 0.001,
+#            'step_bound': 0.08,
+#            'dataterm': "W1",
+#            'use_gpu': True
+#        }
+#    }),
+#    (WassersteinModel(gtab, **base_params), {
+#        'solver_engine': 'pd',
+#        'solver_params': {
+#            'lbd': 1.0,
+#            'term_relgap': 1e-05,
+#            'term_maxiter': 150000,
+#            'granularity': 5000,
+#            'step_factor': 0.001,
+#            'step_bound': 0.0012,
+#            'use_gpu': True
+#        }
+#    }),
 ]
 
 logging.info("Model fitting.")
 us = [np.zeros((l_labels,) + imagedims, order='C') for m in range(len(models))]
-for (j,m) in enumerate(models):
+for j, (m,fit_params) in enumerate(models):
     logging.info("Model: %s" % type(m).__name__)
-    u = m.fit(S_data).odf(qball_sphere)
+    u = m.fit(S_data, **fit_params).odf(qball_sphere)
     u = np.clip(u, 0, np.max(u, -1)[..., None])
     us[j][:] = u.T
-
-logging.info("Model from SSVM")
-us.append(np.zeros(S_data.shape).T)
-params = {
-    'lbd': 2.5,
-    'term_relgap': 1e-05,
-    'term_maxiter': 100000,
-    'granularity': 5000,
-    'step_factor': 0.0001,
-    'step_bound': 1.3,
-    'dataterm': "W1",
-    'use_gpu': True
-}
-pd_state, details = w1_tv_regularization(us[0], gtab, **params)
-us[-1][:] = pd_state[0]
 us.reverse()
 
 # ==============================================================================
 #    Q-ball plot
 # ==============================================================================
 
-logging.info("Plot result. Top to bottom:\n%s\nModel from SSVM"
+logging.info("Plot result. Top to bottom:\n%s"
     % "\n".join(type(m).__name__  for m in models))
 if d_image == 2:
     uniform_odf = np.ones((l_labels,), order='C')/l_labels
