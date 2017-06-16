@@ -38,16 +38,18 @@ def w1_tv_regularization(f, gtab, sampling_matrix,
     """
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
-    normalize_odf(f, b_sph.b)
 
-    imagedims = f.shape[1:]
+    imagedims = f.shape[:-1]
     n_image = np.prod(imagedims)
     d_image = len(imagedims)
     l_labels = b_sph.mdims['l_labels']
     s_manifold = b_sph.mdims['s_manifold']
     m_gradients = b_sph.mdims['m_gradients']
     r_points = b_sph.mdims['r_points']
-    assert(f.shape[0] == l_labels)
+    assert(f.shape[-1] == l_labels)
+
+    f = np.array(f.reshape(-1, l_labels).T.reshape((l_labels,) + imagedims), order='C')
+    normalize_odf(f, b_sph.b)
 
     Y = np.zeros(sampling_matrix.shape, order='C')
     Y[:] = sampling_matrix

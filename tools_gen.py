@@ -1,5 +1,5 @@
 
-import itertools
+import os, itertools
 import numpy as np
 import matplotlib.collections
 from dipy.core.gradients import GradientTable
@@ -13,7 +13,7 @@ def one_fiber_signal(gtab, angle, snr=None):
         S0=1., angles=[(90,angle)], fractions=[100], snr=snr)
     return signal
 
-def synth_unimodals(bval=3000, imagedims=(8,), jiggle=10):
+def synth_unimodals(bval=3000, imagedims=(8,), jiggle=10, snr=None):
     d_image = len(imagedims)
     n_image = np.prod(imagedims)
 
@@ -21,12 +21,33 @@ def synth_unimodals(bval=3000, imagedims=(8,), jiggle=10):
     l_labels = sph.mdims['l_labels']
     gtab = GradientTable(bval * sph.v.T, b0_threshold=0)
 
+    S_data_orig = np.stack([one_fiber_signal(gtab, 0, snr=None)]*n_image) \
+                    .reshape(imagedims + (l_labels,))
+
     S_data = np.stack([
-        one_fiber_signal(gtab, 0+r, snr=None)
+        one_fiber_signal(gtab, 0+r, snr=snr)
         for r in jiggle*np.random.randn(n_image)
     ]).reshape(imagedims + (l_labels,))
 
-    return S_data, gtab
+    return S_data_orig, S_data, gtab
+
+def synth_cross(res=15, snr=None):
+    # ==========================================================================
+    #    Fiber phantom preparation
+    # ==========================================================================
+    f1 = lambda x: 0.5*(x + 0.3)**3 + 0.05
+    f1inv = lambda y: (y/0.5)**(1/3) - 0.3
+    f2 = lambda x: 0.7*(1.5 - x)**3 - 0.5
+    f2inv = lambda y: 1.5 - ((y + 0.5)/0.7)**(1/3)
+
+    p = FiberPhantom(res)
+    p.add_curve(lambda t: (t,f1(t)), tmin=-0.2, tmax=f1inv(1.0)+0.2)
+    p.add_curve(lambda t: (t,f2(t)), tmin=f2inv(1.0)-0.2, tmax=f2inv(0.0)+0.2)
+
+    gtab, S_data = p.gen_hardi(snr=snr)
+    _, S_data_orig = p.gen_hardi(snr=None)
+
+    return S_data_orig, S_data, gtab, p
 
 def seg_normal(p1, p2):
     p1 = np.array(p1)
@@ -146,6 +167,36 @@ class FiberPhantom(object):
                         mid[:] + 0.5*dir_scaling*dirs[x,y,:]
                     ]).T
                     ax.plot(data[0], data[1], 'r')
+
+    def plot_phantom(self, output_file=None):
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(15,5))
+
+        subplot_opts = {
+            'aspect': 'equal',
+            'xticklabels': [],
+            'yticklabels': [],
+            'xticks': [],
+            'yticks': [],
+            'xlim': [0.0,1.0],
+            'ylim': [0.0,1.0],
+        }
+
+        ax = fig.add_subplot(131, **subplot_opts)
+        self.plot_curves(ax)
+        ax = fig.add_subplot(132, **subplot_opts)
+        self.plot_curves(ax)
+        self.plot_grid(ax)
+        ax = fig.add_subplot(133, **subplot_opts)
+        self.plot_dirs(ax)
+
+        plt.subplots_adjust(left=0.02, bottom=0.02, right=0.98, top=0.98,
+            wspace=0.03, hspace=0)
+
+        if output_file is None:
+            plt.show()
+        else:
+            plt.savefig(output_file)
 
     def gen_hardi(self, snr=20):
         bval = 3000

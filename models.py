@@ -10,14 +10,18 @@ class SSVMModel(CsaOdfModel):
     def fit(self, *args, solver_params={}, sphere=None, **kwargs):
         from solve_qb_cuda import w1_tv_regularization
         if sphere is None:
-            b_vecs = gtab.bvecs[gtab.bvals > 0,...]
+            b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
             sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
-        u = CsaOdfModel.fit(self, *args, **kwargs).odf(sphere)
-        u = np.array(np.clip(u, 0, np.max(u, -1)[..., None]).T, order='C')
-        pd_state, details = w1_tv_regularization(u, self.gtab, **solver_params)
+        f = CsaOdfModel.fit(self, *args, **kwargs).odf(sphere)
+        f = np.clip(f, 0, np.max(f, -1)[..., None])
+        pd_state, details = w1_tv_regularization(f, self.gtab, **solver_params)
         self.solver_state = pd_state
         self.solver_details = details
-        return TrivialOdfFit(pd_state[0].T, sphere)
+        l_labels = pd_state[0].shape[0]
+        imagedims = pd_state[0].shape[1:]
+        u = pd_state[0].reshape(l_labels, -1)
+        u = u.T.reshape(imagedims + (l_labels,))
+        return TrivialOdfFit(u, sphere)
 
 class TrivialOdfFit(OdfFit):
     def __init__(self, data, sphere):
@@ -44,8 +48,7 @@ class AganjWassersteinModel(CsaOdfModel):
     def _get_shm_coef(self, data, mask=None):
         """Returns the coefficients of the model"""
         sh_coef = CsaOdfModel._get_shm_coef(self, data, mask)
-        f = np.zeros((self.B.shape[0],) + sh_coef.shape[:-1], order='C')
-        f[:] = np.dot(sh_coef, self.B.T).T
+        f = np.dot(sh_coef, self.B.T)
         pd_state, details = self.solver_func(f, self.gtab,
             sampling_matrix=self.B, **self.solver_params)
         self.solver_state = pd_state

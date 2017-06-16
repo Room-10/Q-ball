@@ -100,5 +100,6 @@ ENV/
 *.pdf
 *.log
 
-# Plots
+# Results
+results
 *.png
