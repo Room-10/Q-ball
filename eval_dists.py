@@ -1,4 +1,7 @@
 
+import matplotlib
+matplotlib.use('Agg')
+
 from manifold_sphere import load_sphere
 from eval_w1dist import w1_dist
 from tools import normalize_odf
