@@ -22,7 +22,7 @@ for output_dir in sys.argv[1:]:
     S_data_orig_file = os.path.join(output_dir, 'S_data_orig.np')
     pd_result_file = os.path.join(output_dir, 'result_raw.npz')
     dists_file = os.path.join(output_dir, 'dists.npz')
-    dists_plot_file = os.path.join(output_dir, 'plot_dists.png')
+    dists_plot_file = os.path.join(output_dir, 'plot_dists.pdf')
 
     gtab = pickle.load(open(gtab_file, 'rb'))
     S_data = np.load(open(S_data_file, 'rb'))
@@ -94,8 +94,12 @@ for output_dir in sys.argv[1:]:
         (w1d_upd,   "W1 distance (result)"),
         (l2d_upd,   "L2 distance (result)")
     ]
+    subplot_opts = {
+        'xticklabels': [],
+        'yticklabels': [],
+    }
     for i, (dist, descr) in enumerate(dist_arr):
-        a = fig.add_subplot(2,2,i+1)
+        a = fig.add_subplot(2,2,i+1, **subplot_opts)
         if len(imagedims) == 1:
             d = np.atleast_2d(dist.reshape(imagedims))
         else:

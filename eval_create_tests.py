@@ -22,15 +22,14 @@ params = {
         'assume_normed': True,
     },
     'fit': {
-        'sphere': None,
+        'solver_engine': 'pd',
         'solver_params': {
-            'lbd': 1.5,
+            'lbd': 1.0,
             'term_relgap': 1e-05,
-            'term_maxiter': 100000,
-            'granularity': 5000,
-            'step_factor': 0.0001,
-            'step_bound': 1.3,
-            'dataterm': "W1",
+            'term_maxiter': 1000000,
+            'granularity': 10000,
+            'step_factor': 0.001,
+            'step_bound': 0.001,
             'use_gpu': True
         },
     },

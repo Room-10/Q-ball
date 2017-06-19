@@ -43,8 +43,9 @@ class MyExperiment(util.QBallExperiment):
 
     def plot(self):
         util.QBallExperiment.plot(self)
-        phantom_plot_file = os.path.join(self.output_dir, "plot-phantom.pdf")
-        self.phantom.plot_phantom(output_file=phantom_plot_file)
+        if hasattr(self, "phantom"):
+            phantom_plot_file = os.path.join(self.output_dir, "plot-phantom.pdf")
+            self.phantom.plot_phantom(output_file=phantom_plot_file)
 
 if __name__ == "__main__":
     logging.info("Running from command line: %s" % sys.argv)
