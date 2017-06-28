@@ -175,7 +175,13 @@ class Experiment(object):
 
         self.pd_result = data_from_file(pd_result_file)
         if self.pd_result is not None:
-            self.pd_result = tuple(self.pd_result['arr_%d'%i] for i in range(8))
+            tpl = ()
+            for i in range(20):
+                try:
+                    tpl += (self.pd_result['arr_%d'%i],)
+                except KeyError:
+                    break
+            self.pd_result = tpl
 
         params = data_from_file(params_file, format="pickle")
         if params is None:

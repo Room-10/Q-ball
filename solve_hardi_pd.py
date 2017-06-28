@@ -196,18 +196,6 @@ def _apply_PB(pgrad, P, B, w):
                     for t in range(w.shape[3]):
                         pgrad[P[j,m],t,i] -= B[j,l,m] * w[i,j,l,t]
 
-@jit
-def _apply_PB0(p0grad, P, B, w0):
-    """
-    # TODO: advanced indexing without creating a copy on the lhs. possible??
-    p0grad[b_sph.P] -= np.einsum('jlm,ijl->jmi', b_sph.B, w0)
-    """
-    for i in range(w0.shape[0]):
-        for j in range(w0.shape[1]):
-            for l in range(w0.shape[2]):
-                for m in range(B.shape[2]):
-                    p0grad[P[j,m],i] -= B[j,l,m] * w0[i,j,l]
-
 def manifold_op_adjoint(u1grad, u2grad, vgrad, wgrad, p, g, q0, q1, q2,
                         b_sph, f, Y, M, avgskips):
     """ Apply the adjoint linear operator in the model to (p,g,q0,q1,q2).
