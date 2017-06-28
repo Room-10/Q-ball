@@ -29,8 +29,8 @@ class MyExperiment(util.QBallExperiment):
                 'term_relgap': 1e-05,
                 'term_maxiter': 150000,
                 'granularity': 5000,
-                'step_factor': 0.001,
-                'step_bound': 0.001,
+                'step_factor': 0.033,
+                'step_bound': 0.0014,
                 'use_gpu': True
             },
         }
