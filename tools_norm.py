@@ -133,3 +133,33 @@ def norms_nuclear(g, res):
     else:
         raise Exception("Dimension error: d_image={:d}, s_manifold={:d}" \
                         .format(d_image, s_manifold))
+
+def project_duals(p, lbd, p_norms):
+    """ Project the p^i to the Frobenius ball of radius lbd.
+
+    Args:
+        g : numpy array of shape (l_shm, d_image, n_image)
+            The p^i are projected to the ball with radius lbd.
+        lbd : radius of the ball
+        p_norms : numpy array of shape (n_image,)
+                  for caching purposes
+    Returns:
+        nothing, the result is stored in place!
+    """
+    # L2 projection (wrt. Frobenius norm)
+    norms_frobenius(p, p_norms)
+    np.fmax(lbd, p_norms, out=p_norms)
+    np.divide(lbd, p_norms, out=p_norms)
+    p[:] = np.einsum('i,...i->...i', p_norms, p)
+
+def norms_frobenius(p, res):
+    """ Compute the frobenius norm of each p^i and store it in res.
+
+    Args:
+        p : numpy array of shape (l_shm, d_image, n_image)
+        res : numpy array of shape (n_image,)
+    Returns:
+        nothing, the result is written to res
+    """
+    np.einsum('kti,kti->i', p, p, out=res)
+    np.sqrt(res, out=res)
