@@ -201,7 +201,11 @@ def l2_w1tv_fitting(data, gtab, sampling_matrix, model_matrix,
             ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1)),
             ("PrimalKernel4", (n_image, l_shm, 1), (16, 16, 1)),
         ]
-        cuda_files = ['solve_hardi_cuda_primal.cu', 'solve_hardi_cuda_dual.cu']
+        from pkg_resources import resource_stream
+        cuda_files = [
+            resource_stream('qball.solvers.hardi', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.hardi', 'cuda_dual.cu'),
+        ]
         cuda_kernels, cuda_vars = prepare_kernels(cuda_files, cuda_templates,
                                                   gpu_constvars, itervars)
 

@@ -211,7 +211,11 @@ def w1_tv_regularization(f, gtab, sampling_matrix,
             ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1)),
             ("PrimalKernel4", (n_image, l_shm, 1), (16, 16, 1)),
         ]
-        cuda_files = ['solve_qbshm_cuda_primal.cu', 'solve_qbshm_cuda_dual.cu']
+        from pkg_resources import resource_stream
+        cuda_files = [
+            resource_stream('qball.solvers.qbshm', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.qbshm', 'cuda_dual.cu'),
+        ]
         cuda_kernels, cuda_vars = prepare_kernels(cuda_files, cuda_templates,
                                                   gpu_constvars, itervars)
 
