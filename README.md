@@ -34,19 +34,12 @@ Setup
 Run
 ---
 
-Run the scripts called `demo_*.py`, e.g.,
+Run the scripts in the `demos` subdirectory, e.g.,
 
-    python demo_cross.py
-
-If you pass an additional argument, the plots are silently written to the subdirectory `pic`:
-
-    python demo_cross.py --batch
+    python demos/cross_hardi.py
 
 Outlook
 -------
 
-* Add a framework for reproducibility of results (store logs, plots and current source code).
-* Evaluate results relative to (known) ground truth for synthetic data.
 * The confidence-interval-based fidelity still has to be implemented.
-* A comparison with spatial TV-regularization of SHM coefficients would be interesting.
 * Evaluate results wrt. quality of fiber tractography.
