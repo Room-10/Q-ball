@@ -7,7 +7,9 @@ from pycuda import compiler, gpuarray
 import pycuda.autoinit
 from pycuda.driver import device_attribute as devattr
 
-import logging
+import logging, warnings
+# ignore nvcc deprecation warnings
+warnings.simplefilter('ignore', UserWarning)
 
 import qball.util as util
 
