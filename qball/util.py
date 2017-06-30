@@ -122,14 +122,36 @@ def data_from_file(path, format="np"):
     except:
         return None
 
+def addDirToZip(zipHandle, path, basePath="", exclude=[]):
+    """ From https://stackoverflow.com/a/17020687
+    Adding directory given by \a path to opened zip file \a zipHandle
+
+    @param basePath path that will be removed from \a path when adding to archive
+    """
+    basePath = basePath.rstrip("\\/") + ""
+    basePath = basePath.rstrip("\\/")
+    for root, dirs, files in os.walk(path):
+        if os.path.basename(root) in exclude:
+            continue
+        # add dir itself (needed for empty dirs
+        zipHandle.write(os.path.join(root, "."))
+        # add files
+        for file in files:
+            filePath = os.path.join(root, file)
+            inZipPath = filePath.replace(basePath, "", 1).lstrip("\\/")
+            #print filePath + " , " + inZipPath
+            zipHandle.write(filePath, inZipPath)
+
 def backup_source(output_dir):
     zip_file = os.path.join(output_dir, "{}-source.zip".format(
         datetime.now().strftime('%Y%m%d%H%M%S')
     ))
     zipf = zipfile.ZipFile(zip_file, 'w', zipfile.ZIP_DEFLATED)
-    for f in glob.glob('*.cu') + glob.glob('*.py') + glob.glob('*.txt'):
+    addDirToZip(zipf, "qball", exclude=["__pycache__"])
+    addDirToZip(zipf, "eval", exclude=["__pycache__"])
+    addDirToZip(zipf, "demos", exclude=["__pycache__"])
+    for f in glob.glob('requirements*.txt') + glob.glob('README.md'):
         zipf.write(f)
-    zipf.write("README.md")
     zipf.close()
 
 class Experiment(object):
