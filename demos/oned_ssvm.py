@@ -9,7 +9,10 @@ from __future__ import division
 import logging, sys
 import numpy as np
 
-import set_qball_path
+try:
+    import qball
+except:
+    import set_qball_path
 import qball.util as util
 import qball.tools.gen as gen
 from qball.models import SSVMModel

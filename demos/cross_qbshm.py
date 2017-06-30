@@ -9,7 +9,10 @@ from __future__ import division
 import os, logging, sys
 import numpy as np
 
-import set_qball_path
+try:
+    import qball
+except:
+    import set_qball_path
 import qball.util as util
 import qball.tools.gen as gen
 from qball.models import AganjWassersteinModel
@@ -28,8 +31,8 @@ class MyExperiment(util.QBallExperiment):
             'solver_params': {
                 'lbd': 1.0,
                 'term_relgap': 1e-05,
-                'term_maxiter': 150000,
-                'granularity': 5000,
+                'term_maxiter': int(1e7),
+                'granularity': 10000,
                 'step_factor': 0.001,
                 'step_bound': 0.08,
                 'dataterm': "W1",

@@ -1,5 +1,5 @@
 
-from tools import normalize_odf
+from qball.tools import normalize_odf
 from qball.tools.cvx import cvxVariable, sparse_div_op, cvxOp
 from qball.sphere import load_sphere
 

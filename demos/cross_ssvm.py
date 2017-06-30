@@ -9,7 +9,10 @@ from __future__ import division
 import os, logging, sys
 import numpy as np
 
-import set_qball_path
+try:
+    import qball
+except:
+    import set_qball_path
 import qball.util as util
 import qball.tools.gen as gen
 from qball.models import SSVMModel
@@ -24,8 +27,8 @@ class MyExperiment(util.QBallExperiment):
             'solver_params': {
                 'lbd': 2.5,
                 'term_relgap': 1e-05,
-                'term_maxiter': 100000,
-                'granularity': 5000,
+                'term_maxiter': int(1e7),
+                'granularity': 10000,
                 'step_factor': 0.0001,
                 'step_bound': 1.3,
                 'dataterm': "W1",

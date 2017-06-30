@@ -20,19 +20,22 @@ def w1_dist(f, u, mf, verbose=False):
 
     fmu = np.einsum('k,ki->ki', mf.b, f - u)
 
+    p = cvx.Variable(l_labels)
+    g = cvx.Variable(m_gradients, s_manifold)
+    fmu_i = cvx.Parameter(l_labels)
+    obj = cvx.Maximize(fmu_i.T*p)
+
+    constraints = []
+    for j in range(m_gradients):
+        constraints.append(mf.A[j,:,:]*g[j,:].T == mf.B[j,:,:]*p[mf.P[j,:]])
+        constraints.append(cvx.norm(g[j,:].T, 2) <= 1)
+
+    prob = cvx.Problem(obj, constraints)
+
     results = np.zeros(n_image)
     for i in range(n_image):
-        p = cvx.Variable(l_labels)
-        g = cvx.Variable(m_gradients, s_manifold)
-        obj = cvx.Maximize(fmu[:,i]*p)
-
-        constraints = []
-        for j in range(m_gradients):
-            constraints.append(mf.A[j,:,:]*g[j,:].T == mf.B[j,:,:]*p[mf.P[j,:]])
-            constraints.append(cvx.norm(g[j,:].T, 2) <= 1)
-
-        prob = cvx.Problem(obj, constraints)
-        prob.solve()
+        fmu_i.value = fmu[:,i]
+        prob.solve(warm_start=True)
         results[i] = obj.value
 
     return results

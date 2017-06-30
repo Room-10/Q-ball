@@ -1,6 +1,6 @@
 
 from qball.sphere import load_sphere
-from tools import normalize_odf
+from qball.tools import normalize_odf
 from qball.tools.diff import staggered_diff_avgskips
 from qball.solvers.qbshm.pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
 import qball.util as util
