@@ -35,13 +35,6 @@ class LambdaOptimizer(object):
         # ----------------------------------------------------------------------
         #   init
         # ----------------------------------------------------------------------
-        d = self.dist(self.f_gt, self.f_noisy)
-        self.fulldists[lbd_key(0.0)] = d
-        d_sum = np.sum(d)
-        print("Noise: %.5f (min: %.5f, max: %.5f)" % (
-            d_sum, np.amin(d), np.amax(d)))
-        self.dists[lbd_key(0.0)] = d_sum
-
         lbd_l = lbd = lbd_r = 0
         for i in np.arange(1, 20, dtype=np.float64):
             self.dists[lbd_key(i)] = self.compute(i)
@@ -141,6 +134,17 @@ class LambdaOptimizer(object):
             dist_npz = {}
         else:
             dist_npz = dict(np.load(open(dist_file, 'rb')))
+
+        if lbd_key(0.0) not in self.fulldists:
+            if self.redist or distname_noise not in dist_npz:
+                d = self.dist(self.f_gt, self.f_noisy)
+                dist_npz[distname_noise] = d
+            d = dist_npz[distname_noise]
+            self.fulldists[lbd_key(0.0)] = d
+            d_sum = np.sum(d)
+            print("Noise: %.5f (min: %.5f, max: %.5f)" % (
+                d_sum, np.amin(d), np.amax(d)))
+            self.dists[lbd_key(0.0)] = d_sum
 
         if distname_noise not in dist_npz:
             dist_npz[distname_noise] = self.fulldists[lbd_key(0.0)]
