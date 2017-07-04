@@ -73,6 +73,7 @@ def add_log_file(logger, output_dir):
         logging.Formatter(fmt="[%(relativeCreated) 8d] %(message)s")
     )
     fileHandler.setLevel(logging.DEBUG)
+    logger.handlers = [h for h in logger.handlers if not isinstance(h, logging.FileHandler)]
     logger.addHandler(fileHandler)
 
 def output_dir_name(label):
