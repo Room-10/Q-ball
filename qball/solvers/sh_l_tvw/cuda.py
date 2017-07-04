@@ -1,36 +1,34 @@
 
 from qball.sphere import load_sphere
-from qball.tools import normalize_odf
 from qball.tools.diff import staggered_diff_avgskips
-from qball.solvers.qbshm.pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
+from qball.solvers.sh_l_tvw.pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
 import qball.util as util
 
 import numpy as np
 
 import logging
 
-def w1_tv_regularization(f, gtab, sampling_matrix,
-        lbd=10.0,
+def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix,
+        lbd=1.0,
         term_relgap=1e-7,
         term_infeas=None,
-        term_maxiter=20000,
-        step_bound=0.08,
+        term_maxiter=150000,
+        step_bound=0.0012,
         step_factor=0.001,
         granularity=5000,
         use_gpu=True,
         constraint_u=None,
-        dataterm="W1",
         continue_at=None
     ):
     """ Solve ...
 
     Args:
-        f : reference image
+        data : reference HARDI image
         gtab : bvals and bvecs
         ... : more keyword arguments
     Returns:
         pd_state : the solution; a tuple of numpy arrays
-                        (uk, vk, wk, w0k, pk, gk, q0k, q1k, p0k, g0k)
+                        (u1k, u2k, vk, wk, pk, gk, q0k, q1k, q2k)
                    that can be put back into this function as the `continue_at`
                    parameter.
         details : dictionary containing information on the objective primal
@@ -39,30 +37,33 @@ def w1_tv_regularization(f, gtab, sampling_matrix,
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 
-    imagedims = f.shape[:-1]
+    imagedims = data.shape[:-1]
     n_image = np.prod(imagedims)
     d_image = len(imagedims)
     l_labels = b_sph.mdims['l_labels']
     s_manifold = b_sph.mdims['s_manifold']
     m_gradients = b_sph.mdims['m_gradients']
     r_points = b_sph.mdims['r_points']
-    assert(f.shape[-1] == l_labels)
-
-    f = np.array(f.reshape(-1, l_labels).T.reshape((l_labels,) + imagedims), order='C')
-    normalize_odf(f, b_sph.b)
+    assert(data.shape[-1] == l_labels)
 
     Y = np.zeros(sampling_matrix.shape, order='C')
     Y[:] = sampling_matrix
     l_shm = Y.shape[1]
+    M = model_matrix
+    assert(model_matrix.size == l_shm)
 
-    logging.info("Solving ({l_labels} labels, {l_shm} shm, m={m}; img: {imagedims}; " \
-        "dataterm: {dataterm}, lambda={lbd:.3g}, steps<{maxiter})...".format(
+    f = np.zeros((l_labels, n_image), order='C')
+    f[:] = np.log(-np.log(data)).reshape(-1, l_labels).T
+    f_mean = np.einsum('ki,k->i', f, b_sph.b)/(4*np.pi)
+    f -= f_mean
+
+    logging.info("Solving ({l_labels} labels, {l_shm} shm, m={m}; " \
+        "img: {imagedims}; lambda={lbd:.3g}, steps<{maxiter})...".format(
         lbd=lbd,
         m=m_gradients,
         l_labels=l_labels,
         l_shm=l_shm,
         imagedims="x".join(map(str,imagedims)),
-        dataterm=dataterm,
         maxiter=term_maxiter
     ))
 
@@ -84,48 +85,41 @@ def w1_tv_regularization(f, gtab, sampling_matrix,
 
     if continue_at is None:
         # start with a uniform distribution in each voxel
-        uk = np.ones((l_labels,) + imagedims, order='C')/np.einsum('k->', b_sph.b)
-        uk[:,uconstrloc] = constraint_u[:,uconstrloc]
+        u1k = np.ones((l_labels,) + imagedims, order='C')/np.einsum('k->', b_sph.b)
+        u1k[:,uconstrloc] = constraint_u[:,uconstrloc]
 
+        u2k = np.zeros((l_labels, n_image), order='C')
         vk = np.zeros((l_shm, n_image), order='C')
         vk[0,:] = .5 / np.sqrt(np.pi)
         wk = np.zeros((n_image, m_gradients, s_manifold, d_image), order='C')
-        w0k = np.zeros((n_image, m_gradients, s_manifold), order='C')
         pk = np.zeros((l_labels, d_image, n_image), order='C')
         gk = np.zeros((n_image, m_gradients, s_manifold, d_image), order='C')
         q0k = np.zeros(n_image)
         q1k = np.zeros((l_labels, n_image), order='C')
-        p0k = np.zeros((l_labels, n_image), order='C')
-        g0k = np.zeros((n_image, m_gradients, s_manifold), order='C')
+        q2k = np.zeros((l_labels, n_image), order='C')
     else:
-        uk, vk, wk, w0k, pk, gk, q0k, q1k, p0k, g0k = (ar.copy() for ar in continue_at)
+        u1k, u2k, vk, wk, pk, gk, q0k, q1k, q2k = (ar.copy() for ar in continue_at)
 
-    ukp1 = uk.copy()
+    u1kp1 = u1k.copy()
+    u2kp1 = u2k.copy()
     vkp1 = vk.copy()
     wkp1 = wk.copy()
-    w0kp1 = w0k.copy()
     pkp1 = pk.copy()
     gkp1 = gk.copy()
     q0kp1 = q0k.copy()
     q1kp1 = q1k.copy()
-    p0kp1 = p0k.copy()
-    g0kp1 = g0k.copy()
-    ubark = uk.copy()
+    q2kp1 = q2k.copy()
+    u1bark = u1k.copy()
+    u2bark = u2k.copy()
     vbark = vk.copy()
     wbark = wk.copy()
-    w0bark = w0k.copy()
     g_norms = np.zeros((n_image, m_gradients), order='C')
 
     avgskips = staggered_diff_avgskips(imagedims)
-
-    if dataterm == "quadratic":
-        dataterm_factor = 1.0/(1.0 + tau*b_sph.b)
-    elif dataterm == "W1":
-        dataterm_factor = np.ones((l_labels,))
-    else:
-        raise Exception("Dataterm '%s' not supported!" % dataterm)
+    dataterm_factor = 1.0/(1.0 + tau*b_sph.b)
 
     constvars = {
+        'M': M,
         'Y': Y,
         'f': f,
         'constraint_u': constraint_u,
@@ -135,34 +129,31 @@ def w1_tv_regularization(f, gtab, sampling_matrix,
         'theta': theta,
         'lbd': lbd,
         'avgskips': avgskips,
-        'dataterm': dataterm,
     }
 
     itervars = {
-         'uk': uk,
+         'u1k': u1k,
+         'u2k': u2k,
          'vk': vk,
          'wk': wk,
-         'w0k': w0k,
-         'ukp1': ukp1,
+         'u1kp1': u1kp1,
+         'u2kp1': u2kp1,
          'vkp1': vkp1,
          'wkp1': wkp1,
-         'w0kp1': w0kp1,
-         'ubark': ubark,
+         'u1bark': u1bark,
+         'u2bark': u2bark,
          'vbark': vbark,
          'wbark': wbark,
-         'w0bark': w0bark,
          'pk': pk,
          'gk': gk,
          'q0k': q0k,
          'q1k': q1k,
-         'p0k': p0k,
-         'g0k': g0k,
+         'q2k': q2k,
          'pkp1': pkp1,
          'gkp1': gkp1,
          'q0kp1': q0kp1,
          'q1kp1': q1kp1,
-         'p0kp1': p0kp1,
-         'g0kp1': g0kp1
+         'q2kp1': q2kp1,
     }
 
     extravars = {
@@ -192,7 +183,6 @@ def w1_tv_regularization(f, gtab, sampling_matrix,
             'l_shm': l_shm,
             'navgskips': 1 << (d_image - 1),
             'skips': np.array(skips, dtype=np.int64, order='C'),
-            'dataterm': dataterm[0].upper(),
             'nd_skip': d_image*n_image,
             'ld_skip': d_image*l_labels,
             'sd_skip': s_manifold*d_image,
@@ -213,8 +203,8 @@ def w1_tv_regularization(f, gtab, sampling_matrix,
         ]
         from pkg_resources import resource_stream
         cuda_files = [
-            resource_stream('qball.solvers.qbshm', 'cuda_primal.cu'),
-            resource_stream('qball.solvers.qbshm', 'cuda_dual.cu'),
+            resource_stream('qball.solvers.sh_l_tvw', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.sh_l_tvw', 'cuda_dual.cu'),
         ]
         cuda_kernels, cuda_vars = prepare_kernels(cuda_files, cuda_templates,
                                                   gpu_constvars, itervars)
@@ -254,7 +244,7 @@ def w1_tv_regularization(f, gtab, sampling_matrix,
                 if interrupt_hdl.interrupted:
                     break
 
-    return (uk, vk, wk, w0k, pk, gk, q0k, q1k, p0k, g0k), {
+    return (u1k, u2k, vk, wk, pk, gk, q0k, q1k, q2k), {
         'objp': obj_p,
         'objd': obj_d,
         'infeasp': infeas_p,

@@ -162,8 +162,10 @@ class Experiment(object):
         self.name = name
 
         parser = ArgumentParser(description="See README.md.")
-        parser.add_argument('outdir', nargs='?', metavar='OUTPUT_DIR',
-                            default=output_dir_name(self.name), type=str,
+        parser.add_argument('model', metavar='MODEL_NAME', type=str,
+                            help="Name of model to use.")
+        parser.add_argument('--output', metavar='OUTPUT_DIR',
+                            default='', type=str,
                             help="Path to output directory. "
                                    + "Existing data will be loaded and used.")
         parser.add_argument('--resume', action="store_true", default=False,
@@ -171,7 +173,11 @@ class Experiment(object):
         parser.add_argument('--batch', action="store_true", default=False,
                             help="Activate batch processing (no plot).")
         parsed_args = parser.parse_args(args)
-        self.output_dir = parsed_args.outdir
+        self.model_name = parsed_args.model
+        if parsed_args.output == '':
+            self.output_dir = output_dir_name("%s-%s" % (self.name, self.model_name))
+        else:
+            self.output_dir = parsed_args.output
         self.resume = parsed_args.resume
         self.interactive = not parsed_args.batch
 
@@ -225,7 +231,13 @@ class Experiment(object):
 class QBallExperiment(Experiment):
     def __init__(self, name, args):
         Experiment.__init__(self, name, args)
-        self.params['fit'] = {}
+        import qball.models
+        self.Model = getattr(qball.models, '%s_Model' % self.model_name)
+        self.params['model'] = self.model_name
+        self.params['fit'] = {
+            'solver_engine': 'cvx',
+            'solver_params': { 'lbd': 1.0, },
+        }
         self.params['base'] = {
             'sh_order': 6,
             'smooth': 0,
@@ -251,6 +263,9 @@ class QBallExperiment(Experiment):
         self.qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
 
     def solve(self):
+        if self.model_name == 'n_w_tvw':
+            self.params['fit']['sphere'] = self.qball_sphere
+
         if self.resume and self.pd_result is not None:
             self.continue_at = self.pd_result
             self.params['fit']['solver_params']['continue_at'] = self.continue_at

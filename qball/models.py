@@ -5,16 +5,16 @@ import dipy.core.sphere
 from dipy.reconst.odf import OdfFit
 from dipy.reconst.shm import QballBaseModel, CsaOdfModel
 
-class SSVMModel(CsaOdfModel):
+class n_w_tvw_Model(CsaOdfModel):
     """ Implementation of Wasserstein-TV model from SSVM """
     def fit(self, *args, solver_params={}, sphere=None, **kwargs):
-        from qball.solvers.qb.cuda import w1_tv_regularization
+        from qball.solvers.n_w_tvw.cuda import qball_regularization
         if sphere is None:
             b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
             sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
         f = CsaOdfModel.fit(self, *args, **kwargs).odf(sphere)
         f = np.clip(f, 0, np.max(f, -1)[..., None])
-        pd_state, details = w1_tv_regularization(f, self.gtab, **solver_params)
+        pd_state, details = qball_regularization(f, self.gtab, **solver_params)
         self.solver_state = pd_state
         self.solver_details = details
         l_labels = pd_state[0].shape[0]
@@ -34,14 +34,14 @@ class TrivialOdfFit(OdfFit):
         else:
             return self.data
 
-class AganjWassersteinModel(CsaOdfModel):
+class sh_w_tvw_Model(CsaOdfModel):
     """ Implementation of Wasserstein-TV model with SHM regularization """
     def fit(self, *args, solver_engine="cvx", solver_params={}, **kwargs):
         if solver_engine == "cvx":
-            from qball.solvers.qbshm.cvx import w1_tv_regularization
+            from qball.solvers.sh_w_tvw.cvx import qball_regularization
         else:
-            from qball.solvers.qbshm.cuda import w1_tv_regularization
-        self.solver_func = w1_tv_regularization
+            from qball.solvers.sh_w_tvw.cuda import qball_regularization
+        self.solver_func = qball_regularization
         self.solver_params = solver_params
         return CsaOdfModel.fit(self, *args, **kwargs)
 
@@ -56,7 +56,7 @@ class AganjWassersteinModel(CsaOdfModel):
         sh_coef = pd_state[1].T.reshape(sh_coef.shape)
         return sh_coef
 
-class WassersteinModel(QballBaseModel):
+class sh_l_tvw_Model(QballBaseModel):
     """ Implementation of Wasserstein-TV model based on HARDI input """
     min = .001
     max = .999
@@ -64,10 +64,10 @@ class WassersteinModel(QballBaseModel):
 
     def fit(self, *args, solver_engine="cvx", solver_params={}, **kwargs):
         if solver_engine == "cvx":
-            from qball.solvers.hardi.cvx import l2_w1tv_fitting
+            from qball.solvers.sh_l_tvw.cvx import fit_hardi_qball
         else:
-            from qball.solvers.hardi.cuda import l2_w1tv_fitting
-        self.solver_func = l2_w1tv_fitting
+            from qball.solvers.sh_l_tvw.cuda import fit_hardi_qball
+        self.solver_func = fit_hardi_qball
         self.solver_params = solver_params
         return QballBaseModel.fit(self, *args, **kwargs)
 
@@ -89,18 +89,18 @@ class WassersteinModel(QballBaseModel):
         sh_coef[..., 0] = self._n0_const
         return sh_coef
 
-class OuyangModel(QballBaseModel):
-    """ Implementation of Wasserstein-TV model based on HARDI input """
+class sh_l_tvc_Model(QballBaseModel):
+    """ Implementation of Ouyang's TV model """
     min = .001
     max = .999
     _n0_const = .5 / np.sqrt(np.pi)
 
     def fit(self, *args, solver_engine="cvx", solver_params={}, **kwargs):
         if solver_engine == "cvx":
-            from qball.solvers.shmtv.cvx import l2_shmtv_fitting
+            from qball.solvers.sh_l_tvc.cvx import fit_hardi_qball
         else:
-            from qball.solvers.shmtv.cuda import l2_shmtv_fitting
-        self.solver_func = l2_shmtv_fitting
+            from qball.solvers.sh_l_tvc.cuda import fit_hardi_qball
+        self.solver_func = fit_hardi_qball
         self.solver_params = solver_params
         return QballBaseModel.fit(self, *args, **kwargs)
 
@@ -122,18 +122,18 @@ class OuyangModel(QballBaseModel):
         sh_coef[..., 0] = self._n0_const
         return sh_coef
 
-class QBTVModel(QballBaseModel):
-    """ Implementation of Wasserstein-TV model based on HARDI input """
+class sh_l_tvo_Model(QballBaseModel):
+    """ Implementation of ODF-TV model """
     min = .001
     max = .999
     _n0_const = .5 / np.sqrt(np.pi)
 
     def fit(self, *args, solver_engine="cvx", solver_params={}, **kwargs):
         if solver_engine == "cvx":
-            from qball.solvers.qbtv.cvx import l2_tv_fitting
+            from qball.solvers.sh_l_tvo.cvx import fit_hardi_qball
         else:
-            from qball.solvers.qbtv.cuda import l2_tv_fitting
-        self.solver_func = l2_tv_fitting
+            from qball.solvers.sh_l_tvo.cuda import fit_hardi_qball
+        self.solver_func = fit_hardi_qball
         self.solver_params = solver_params
         return QballBaseModel.fit(self, *args, **kwargs)
 

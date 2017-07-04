@@ -7,6 +7,22 @@ an optimal transport-based (spatial) TV-regularizer.
 On the sphere, orientation distribution functions are regularized using spherical
 harmonics.
 
+Abbreviations:
+* bases: sh (spherical harmonics), srk (sparse reproducing kernels), n (none)
+* fidelity: l (L2), w (Wasserstein), bnd (confidence intervals/bounds)
+* regularizers: tvo (ODF pointwise), tvw (Wasserstein), tvc (coefficients)
+
+Implemented models:
+* n_w_tvw (SSVM)
+* sh_w_tvw (modified SSVM)
+* sh_l_tvc (Ouyang '14)
+* sh_l_tvo
+* sh_l_tvw (proposed)
+
+Not yet implemented:
+* srk_l_tvc
+* srk_l_tvw
+
 Setup
 -----
 
@@ -36,7 +52,7 @@ Run
 
 Run the scripts in the `demos` subdirectory, e.g.,
 
-    python demos/cross_hardi.py
+    python demos/cross.py
 
 Outlook
 -------

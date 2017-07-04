@@ -117,7 +117,7 @@ class LambdaOptimizer(object):
             params_file = os.path.join(output_dir, 'params.pickle')
             pickle.dump(params, open(params_file, 'wb'))
 
-        exp_args = [output_dir, '--batch']
+        exp_args = [self.baseparams['model'], '--output', output_dir, '--batch']
         if self.resume:
             exp_args.append('--resume')
         exp = self.experiment(exp_args)

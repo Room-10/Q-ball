@@ -1,14 +1,14 @@
 
 from qball.sphere import load_sphere
 from qball.tools.diff import staggered_diff_avgskips
-from qball.solvers.shmtv.pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
+from qball.solvers.sh_l_tvc.pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
 import qball.util as util
 
 import numpy as np
 
 import logging
 
-def l2_shmtv_fitting(data, gtab, sampling_matrix, model_matrix,
+def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix,
         lbd=1.0,
         term_relgap=1e-7,
         term_infeas=None,
@@ -191,8 +191,8 @@ def l2_shmtv_fitting(data, gtab, sampling_matrix, model_matrix,
         ]
         from pkg_resources import resource_stream
         cuda_files = [
-            resource_stream('qball.solvers.shmtv', 'cuda_primal.cu'),
-            resource_stream('qball.solvers.shmtv', 'cuda_dual.cu'),
+            resource_stream('qball.solvers.sh_l_tvc', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.sh_l_tvc', 'cuda_dual.cu'),
         ]
         cuda_kernels, cuda_vars = prepare_kernels(cuda_files, cuda_templates,
                                                   gpu_constvars, itervars)

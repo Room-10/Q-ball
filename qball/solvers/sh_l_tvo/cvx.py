@@ -7,7 +7,7 @@ import cvxpy as cvx
 
 import logging
 
-def l2_tv_fitting(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
+def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 
