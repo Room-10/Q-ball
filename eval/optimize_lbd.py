@@ -46,6 +46,7 @@ class LambdaOptimizer(object):
                     lbd_l = 0.0
                     lbd = 0.5
                     lbd_r = 1.0
+                    self.dists[lbd_key(lbd)] = self.compute(lbd)
                 else:
                     lbd_l = i-2.0
                     lbd = i-1.0
