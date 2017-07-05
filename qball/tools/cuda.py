@@ -1,11 +1,13 @@
 
 from __future__ import division
 
+import time
 import numpy as np
 
 from pycuda import compiler, gpuarray
 import pycuda.autoinit
-from pycuda.driver import device_attribute as devattr
+import pycuda.driver
+import pycuda._driver
 
 import logging, warnings
 # ignore nvcc deprecation warnings
@@ -27,9 +29,18 @@ def iterate_on_gpu(kernels, vars, max_iter):
 
     with util.GracefulInterruptHandler() as interrupt_hdl:
         for _iter in range(max_iter):
-            for kernel in kernels:
-                kernel['func'].prepared_call(kernel['grid'], kernel['block'],
-                    *gpu_constvars, *(v.gpudata for v in gpu_itervars))
+            try:
+                for kernel in kernels:
+                    kernel['func'].prepared_call(kernel['grid'], kernel['block'],
+                        *gpu_constvars, *(v.gpudata for v in gpu_itervars))
+            except pycuda._driver.LaunchError as e:
+                print(e)
+                logging.debug("GPU LaunchError at iter=%d" % _iter)
+                if _iter == 0:
+                    logging.debug("Probably too many threads, terminating...")
+                    max_iter = _iter
+                    break
+                time.sleep(1)
 
             if interrupt_hdl.interrupted:
                 logging.debug("GPU iteration interrupt (SIGINT) at iter=%d" % _iter)
@@ -69,6 +80,7 @@ def prepare_kernels(files, templates, constvars, itervars):
 
     # print information on the current GPU
     attrs = pycuda.autoinit.device.get_attributes()
+    devattr = pycuda.driver.device_attribute
     blockdims = (attrs[devattr.MAX_BLOCK_DIM_X],
                  attrs[devattr.MAX_BLOCK_DIM_Y],
                  attrs[devattr.MAX_BLOCK_DIM_Z])
