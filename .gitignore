@@ -103,3 +103,6 @@ ENV/
 # Results
 results
 *.png
+
+# Backup files
+*~

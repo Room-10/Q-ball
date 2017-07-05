@@ -20,10 +20,12 @@ def l2_dist(f1, f2):
     return np.sqrt(np.einsum('ki,ki->i', f1 - f2, f1 - f2))
 
 class LambdaOptimizer(object):
-    def __init__(self, basedir, experiment, dist=l2_dist, resume=False, redist=False):
+    def __init__(self, basedir, experiment, dist=l2_dist,
+                 resume=False, redist=False, cvx=False):
         self.basedir = basedir.rstrip("/")
         self.dist = dist
         self.experiment = experiment
+        self.cvx = cvx
         self.resume = resume
         self.redist = redist
         self.result = None
@@ -120,6 +122,8 @@ class LambdaOptimizer(object):
         exp_args = [self.baseparams['model'], '--output', output_dir, '--batch']
         if self.resume:
             exp_args.append('--resume')
+        if self.cvx:
+            exp_args.append('--cvx')
         exp = self.experiment(exp_args)
         exp.run()
 
@@ -169,12 +173,14 @@ if __name__ == "__main__":
     parser.add_argument('--redist', action="store_true", default=False,
                         help="Recalculate distances.")
     parser.add_argument('--w1', action="store_true", default=False)
+    parser.add_argument('--cvx', action="store_true", default=False)
     parsed_args = parser.parse_args()
 
     import importlib
     exp = importlib.import_module("demos.%s" % parsed_args.demo)
     opt = LambdaOptimizer(parsed_args.basedir, exp.MyExperiment,
-                          resume=parsed_args.resume, redist=parsed_args.redist)
+                          resume=parsed_args.resume, redist=parsed_args.redist,
+                          cvx=parsed_args.cvx)
     if parsed_args.w1:
         from qball.tools.w1dist import w1_dist as __w1_dist
         def w1_dist(f1, f2):
