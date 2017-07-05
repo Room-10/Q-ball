@@ -110,7 +110,7 @@ def crop_segs(segs, cropmin, cropmax):
 def compute_dirs(lines, res):
     dirs = np.zeros((res,res,2))
     d = 1.0/res
-    for j,l in enumerate(lines):
+    for l in lines:
         for (x,y) in itertools.product(range(res), repeat=2):
             cropmin = (d*x,d*y)
             cropmax = (d*(x+1),d*(y+1))
@@ -219,14 +219,10 @@ class FiberPhantom(object):
                     for norm in norms
                 ])
                 sticks = np.array([
-                    [c['dirs'][x,y,0], c['dirs'][x,y,1], 0]
-                    for c in self.curves
+                    np.array([c['dirs'][x,y,0], c['dirs'][x,y,1], 0])/norm
+                    if norm > 1e-6 else np.array([1,0,0])
+                    for c, norm in zip(self.curves, norms)
                 ])
-                for i,norm in enumerate(norms):
-                    if norm < 1e-6:
-                        sticks[i,:] = [1,0,0]
-                    else:
-                        sticks[i] /= norm
             signal, _ = multi_tensor(gtab, mevals,
                 S0=1., angles=sticks, fractions=fracs, snr=snr)
             S_data[x,y,:] = signal

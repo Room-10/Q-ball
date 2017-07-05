@@ -172,12 +172,15 @@ class Experiment(object):
                             help="Continue at last state.")
         parser.add_argument('--batch', action="store_true", default=False,
                             help="Activate batch processing (no plot).")
+        parser.add_argument('--cvx', action="store_true", default=False,
+                            help="Use CVX as solver engine.")
         parsed_args = parser.parse_args(args)
         self.model_name = parsed_args.model
         if parsed_args.output == '':
             self.output_dir = output_dir_name("%s-%s" % (self.name, self.model_name))
         else:
             self.output_dir = parsed_args.output
+        self.cvx = parsed_args.cvx
         self.resume = parsed_args.resume
         self.interactive = not parsed_args.batch
 

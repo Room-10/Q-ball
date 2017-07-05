@@ -29,6 +29,15 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     M = model_matrix
     assert(M.size == l_shm)
 
+    logging.info("Solving ({l_labels} labels, {l_shm} shm, m={m}; " \
+        "img: {imagedims}; lambda={lbd:.3g}) using CVX...".format(
+        lbd=lbd,
+        m=m_gradients,
+        l_labels=l_labels,
+        l_shm=l_shm,
+        imagedims="x".join(map(str,imagedims)),
+    ))
+
     p  = cvxVariable(l_labels, d_image, n_image)
     q0 = cvxVariable(n_image)
     q1 = cvxVariable(l_labels, n_image)

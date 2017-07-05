@@ -31,7 +31,7 @@ fit_params = {
         },
     },
     'sh_w_tvw': {
-        'solver_engine': 'pd',
+        'solver_engine': 'cuda',
         'solver_params': {
             'lbd': 1.0,
             'term_relgap': 1e-05,
@@ -44,7 +44,7 @@ fit_params = {
         },
     },
     'sh_l_tvc': {
-        'solver_engine': 'pd',
+        'solver_engine': 'cuda',
         'solver_params': {
             'lbd': 1.0,
             'term_relgap': 1e-05,
@@ -56,7 +56,7 @@ fit_params = {
         },
     },
     'sh_l_tvo': {
-        'solver_engine': 'pd',
+        'solver_engine': 'cuda',
         'solver_params': {
             'lbd': 1.0,
             'term_relgap': 1e-05,
@@ -68,7 +68,7 @@ fit_params = {
         },
     },
     'sh_l_tvw': {
-        'solver_engine': 'pd',
+        'solver_engine': 'cuda',
         'solver_params': {
             'lbd': 1.0,
             'term_relgap': 1e-05,
@@ -84,7 +84,8 @@ fit_params = {
 class MyExperiment(util.QBallExperiment):
     def __init__(self, args):
         util.QBallExperiment.__init__(self, "cross", args)
-        self.params['fit'] = fit_params[self.model_name]
+        if not self.cvx:
+            self.params['fit'] = fit_params[self.model_name]
 
     def setup_imagedata(self):
         logging.info("Data setup.")
