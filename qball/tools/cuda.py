@@ -24,30 +24,26 @@ def iterate_on_gpu(kernels, vars, max_iter):
     Returns:
         The number of executed iterations.
     """
-    gpu_itervars = [gpuarray.to_gpu(val) for name, val in vars['iter']]
-    gpu_constvars = [val for name, val in vars['const']]
-
-    with util.GracefulInterruptHandler() as interrupt_hdl:
-        for _iter in range(max_iter):
-            try:
+    _iter = 0
+    try:
+        gpu_itervars = [gpuarray.to_gpu(val) for name, val in vars['iter']]
+        gpu_constvars = [val for name, val in vars['const']]
+        with util.GracefulInterruptHandler() as interrupt_hdl:
+            while _iter < max_iter:
                 for kernel in kernels:
                     kernel['func'].prepared_call(kernel['grid'], kernel['block'],
                         *gpu_constvars, *(v.gpudata for v in gpu_itervars))
-            except pycuda._driver.LaunchError as e:
-                print(e)
-                logging.debug("GPU LaunchError at iter=%d" % _iter)
-                if _iter == 0:
-                    logging.debug("Probably too many threads, terminating...")
+                if interrupt_hdl.interrupted:
+                    logging.debug("GPU iteration interrupt (SIGINT) at iter=%d" % _iter)
                     max_iter = _iter
                     break
-                time.sleep(1)
-
-            if interrupt_hdl.interrupted:
-                logging.debug("GPU iteration interrupt (SIGINT) at iter=%d" % _iter)
-                max_iter = _iter
-                break
-
-    [gv.get(ary=v[1]) for gv,v in zip(gpu_itervars, vars['iter'])]
+                _iter += 1
+        [gv.get(ary=v[1]) for gv,v in zip(gpu_itervars, vars['iter'])]
+    except pycuda._driver.LaunchError as e:
+        logging.debug("GPU LaunchError at iter=%d" % _iter)
+        logging.debug(e)
+        # This will terminate the iteration
+        max_iter = _iter
     return max_iter
 
 def prepare_kernels(files, templates, constvars, itervars):
