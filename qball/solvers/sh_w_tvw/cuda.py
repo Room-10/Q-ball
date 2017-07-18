@@ -2,7 +2,7 @@
 from qball.sphere import load_sphere
 from qball.tools import normalize_odf
 from qball.tools.diff import staggered_diff_avgskips
-from qball.solvers.n_w_tvwshm.pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
+from qball.solvers.sh_w_tvw.pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
 import qball.util as util
 
 import numpy as np
@@ -213,8 +213,8 @@ def qball_regularization(f, gtab, sampling_matrix,
         ]
         from pkg_resources import resource_stream
         cuda_files = [
-            resource_stream('qball.solvers.n_w_tvwshm', 'cuda_primal.cu'),
-            resource_stream('qball.solvers.n_w_tvwshm', 'cuda_dual.cu'),
+            resource_stream('qball.solvers.sh_w_tvw', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.sh_w_tvw', 'cuda_dual.cu'),
         ]
         cuda_kernels, cuda_vars = prepare_kernels(cuda_files, cuda_templates,
                                                   gpu_constvars, itervars)

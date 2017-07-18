@@ -1,7 +1,7 @@
 
 """
     This standalone application applies several reconstruction themes to a 1d
-    Q-ball data set, i.e. the input image is an ODF in each pixel.
+    HARDI data set.
 """
 
 from __future__ import division

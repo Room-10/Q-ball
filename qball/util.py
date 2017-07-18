@@ -243,10 +243,10 @@ class QBallExperiment(Experiment):
         }
         self.params['base'] = {
             'sh_order': 6,
-            'smooth': 0,
-            'min_signal': 0,
             'assume_normed': True
         }
+        self.plot_scale = 1.0
+        self.plot_norm = False
 
     def load_imagedata(self):
         gtab_file = os.path.join(self.output_dir, 'gtab.pickle')
@@ -291,13 +291,10 @@ class QBallExperiment(Experiment):
         self.fin_orig = np.clip(f, 0, np.max(f, -1)[..., None])
 
     def plot(self):
+        logging.info("Plotting results...")
         n_image = np.prod(self.imagedims)
         d_image = len(self.imagedims)
         l_labels = self.upd.shape[-1]
-        logging.info("Plotting results...")
-
-        plot_scale = 1.0
-        plot_norm = False
 
         # set up data to plot, including spacing in the 2d case
         stack = []
@@ -315,8 +312,9 @@ class QBallExperiment(Experiment):
         if self.interactive:
             # plot self.upd and self.fin as q-ball data sets
             r = fvtk.ren()
-            fvtk.add(r, fvtk.sphere_funcs(plotdata, self.qball_sphere, colormap='jet',
-                                          norm=plot_norm, scale=plot_scale))
+            r_data = fvtk.sphere_funcs(plotdata, self.qball_sphere, colormap='jet',
+                                       norm=self.plot_norm, scale=self.plot_scale)
+            fvtk.add(r, r_data)
             fvtk.show(r, size=(1024, 768))
 
         logging.info("Recording plot...")
@@ -329,8 +327,9 @@ class QBallExperiment(Experiment):
             plotdata2 = img.copy()
             plotdata2.shape = self.imagedims + (1,)*(3-d_image) + (l_labels,)
             r = fvtk.ren()
-            fvtk.add(r, fvtk.sphere_funcs(plotdata2, self.qball_sphere, colormap='jet',
-                                          norm=plot_norm, scale=plot_scale))
+            r_data = fvtk.sphere_funcs(plotdata2, self.qball_sphere, colormap='jet',
+                                       norm=self.plot_norm, scale=self.plot_scale)
+            fvtk.add(r, r_data)
             r.reset_clipping_range()
             fvtk.snapshot(r, size=(1500,1500), offscreen=True,
                           fname=os.path.join(self.output_dir, "plot-"+name+".png"))

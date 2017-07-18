@@ -95,7 +95,7 @@ class LambdaOptimizer(object):
         self.reconst_f()
 
     def reconst_f(self):
-        l_labels = self.S_data.shape[-1]
+        l_labels = np.sum(self.gtab.bvals > 0)
         imagedims = self.S_data.shape[:-1]
         b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
         self.qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)

@@ -1,11 +1,47 @@
 
-import os, itertools
+import os, itertools, warnings
 import numpy as np
 import matplotlib.collections
+
 from dipy.core.gradients import GradientTable
 from dipy.sims.voxel import multi_tensor
+from dipy.sims.phantom import add_noise
+from dipy.data import fetch_stanford_hardi, read_stanford_hardi
+from dipy.segment.mask import median_otsu
 
 from qball.sphere import load_sphere
+
+try:
+    from contextlib import redirect_stdout
+except ImportError:
+    # shim for Python 2.x
+    import sys
+    from contextlib import contextmanager
+    @contextmanager
+    def redirect_stdout(new_target):
+        old_target, sys.stdout = sys.stdout, new_target # replace sys.stdout
+        try:
+            yield new_target # run some code with the replaced stdout
+        finally:
+            sys.stdout = old_target # restore to the previous value
+
+def rw_stanford(snr=None):
+    with redirect_stdout(open(os.devnull, "w")), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fetch_stanford_hardi()
+        # img : 4d-array, img.shape[-1] == gtab.bvals.size
+        # gtab : contains bvals and bvecs
+        img, gtab = read_stanford_hardi()
+        data = img.get_data()
+        # median filter -> otsu -> mask (bg blacked out)
+        maskdata, mask = median_otsu(data, 3, 1, True,
+                                     vol_idx=range(10, 50), dilate=2)
+
+    S_data = np.array(maskdata[13:43, 44:74, 28], order='C')
+    S_data_orig = S_data.copy()
+    if snr is not None:
+        S_data[:] = add_noise(S_data_orig, snr=snr)
+    return S_data_orig, S_data, gtab
 
 def one_fiber_signal(gtab, angle, snr=None):
     mevals = np.array([[1500e-6, 300e-6, 300e-6]])

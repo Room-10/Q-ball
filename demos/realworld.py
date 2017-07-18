@@ -1,7 +1,7 @@
 
 """
     This standalone application applies several reconstruction themes to a
-    synthetic 2d HARDI data set.
+    HARDI data set.
 """
 
 from __future__ import division
@@ -33,11 +33,11 @@ fit_params = {
     'sh_w_tvw': {
         'solver_engine': 'cuda',
         'solver_params': {
-            'lbd': 1.0,
+            'lbd': 0.8,
             'term_relgap': 1e-05,
             'term_maxiter': int(1e7),
             'granularity': 10000,
-            'step_factor': 0.001,
+            'step_factor': 0.005,
             'step_bound': 0.08,
             'dataterm': "W1",
             'use_gpu': True
@@ -83,21 +83,17 @@ fit_params = {
 
 class MyExperiment(util.QBallExperiment):
     def __init__(self, args):
-        util.QBallExperiment.__init__(self, "cross", args)
+        util.QBallExperiment.__init__(self, "realworld", args)
+        self.params['base']['assume_normed'] = False
+        self.plot_scale = 2.4
+        self.plot_norm = True
         if not self.cvx:
             self.params['fit'] = fit_params[self.model_name]
 
     def setup_imagedata(self):
         logging.info("Data setup.")
         #np.random.seed(seed=234234)
-        self.S_data_orig, self.S_data, \
-            self.gtab, self.phantom = gen.synth_cross(snr=20)
-
-    def plot(self):
-        util.QBallExperiment.plot(self)
-        if hasattr(self, "phantom"):
-            phantom_plot_file = os.path.join(self.output_dir, "plot-phantom.pdf")
-            self.phantom.plot_phantom(output_file=phantom_plot_file)
+        self.S_data_orig, self.S_data, self.gtab = gen.rw_stanford(snr=40)
 
 if __name__ == "__main__":
     logging.info("Running from command line: %s" % sys.argv)
