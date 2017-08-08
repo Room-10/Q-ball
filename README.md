@@ -26,18 +26,16 @@ Not yet implemented:
 Setup
 -----
 
+You will need VTK 7.x with Python 3.x bindings, llvm-config (included in llvm
+devel packages) and gcc-c++.
+
     # setting up a virtual environment
     python3 -m venv env
     source ./env/bin/activate
     pip install --upgrade pip
-    pip install wheel
+    pip install wheel numpy
     pip install -r requirements.0.txt
     pip install -r requirements.1.txt
-
-    # fix bug in dipy-0.11.0
-    cd env/lib/python3.5
-    patch -p0 < ../../../overrides/dipy-int.patch
-    cd ../../../
 
     # include VTK7 from special location
     cd env/lib/python3.5
