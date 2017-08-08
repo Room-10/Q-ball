@@ -14,6 +14,7 @@ import logging, warnings
 warnings.simplefilter('ignore', UserWarning)
 
 import qball.util as util
+from qball.tools.blocks import BlockVar
 
 def iterate_on_gpu(kernels, vars, max_iter):
     """ Execute a fixed number of iterations on the GPU
@@ -126,7 +127,16 @@ def prepare_vars(vars):
         else:
             raise Exception("Type not supported: %s" % type(val))
 
-    for name, val in vars['iter']:
+    for i, (name, val) in enumerate(vars['iter']):
+        if type(val) is BlockVar:
+            # Encode BlockVar description as preprocessor macros
+            for subvar in val:
+                subname = subvar['name'] + name[1:]
+                preamble += "#define SUBVAR_%s double *%s = &%s[%d];\n" \
+                                % (subname, subname, name, subvar['offset'])
+            # Discard BlockVar description and restrict to numpy array
+            val = val.data
+            vars['iter'][i] = (name, val)
         if type(val) is np.ndarray:
             signature += "P"
             if val.dtype == 'float64':

@@ -53,7 +53,7 @@ class sh_w_tvw_Model(CsaOdfModel):
             sampling_matrix=self.B, **self.solver_params)
         self.solver_state = pd_state
         self.solver_details = details
-        sh_coef = pd_state[1].T.reshape(sh_coef.shape)
+        sh_coef = pd_state[0]['v'].T.reshape(sh_coef.shape)
         return sh_coef
 
 class _SH_HardiQballBaseModel(QballBaseModel):

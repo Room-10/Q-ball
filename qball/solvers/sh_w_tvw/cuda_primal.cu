@@ -5,6 +5,9 @@ __global__ void PrimalKernel1(KERNEL_PARAMS)
      * ubark += diag(b) D' pkp1 (D' = -div with Dirichlet boundary)
      */
 
+    SUBVAR_ubark
+    SUBVAR_pkp1
+
     // global thread index
     int k = blockIdx.x*blockDim.x + threadIdx.x;
 
@@ -57,6 +60,17 @@ __global__ void PrimalKernel2(KERNEL_PARAMS)
      * w0bark, w0k = w0bark + theta*(w0bark - w0k), w0bark
      */
 
+    SUBVAR_wk
+    SUBVAR_wbark
+    SUBVAR_wkp1
+    SUBVAR_w0k
+    SUBVAR_w0bark
+    SUBVAR_w0kp1
+    SUBVAR_pkp1
+    SUBVAR_gkp1
+    SUBVAR_p0kp1
+    SUBVAR_g0kp1
+
     // global thread index
     int _lj = blockIdx.x*blockDim.x + threadIdx.x;
     int i = blockIdx.y*blockDim.y + threadIdx.y;
@@ -72,47 +86,47 @@ __global__ void PrimalKernel2(KERNEL_PARAMS)
 
     // iteration variable and misc.
     int mm;
-    double wbark_tmp;
+    double wkp1_tmp;
 
-    wbark_tmp = 0.0;
+    wkp1_tmp = 0.0;
     for(mm = 0; mm < s_manifold; mm++) {
         // jlm,ijmt->ijlt
-        wbark_tmp += A[j*ss_skip + l*s_manifold + mm] *
+        wkp1_tmp += A[j*ss_skip + l*s_manifold + mm] *
                     gkp1[i*msd_skip + j*sd_skip + mm*d_image + t];
     }
 
     for(mm = 0; mm < r_points; mm++) {
         // jlm,jmti->ijlt
-        wbark_tmp -= B[j*sr_skip + l*r_points + mm] *
+        wkp1_tmp -= B[j*sr_skip + l*r_points + mm] *
                     pkp1[P[j*r_points + mm]*nd_skip + t*n_image + i];
     }
 
-    wbark_tmp = wk[i*msd_skip + j*sd_skip + l*d_image + t] - tau*wbark_tmp;
+    wkp1_tmp = wk[i*msd_skip + j*sd_skip + l*d_image + t] - tau*wkp1_tmp;
 
-    wbark[i*msd_skip + j*sd_skip + l*d_image + t] = wbark_tmp
-        + theta*(wbark_tmp - wk[i*msd_skip + j*sd_skip + l*d_image + t]);
-    wk[i*msd_skip + j*sd_skip + l*d_image + t] = wbark_tmp;
-    wkp1[i*msd_skip + j*sd_skip + l*d_image + t] = wbark_tmp;
+    wbark[i*msd_skip + j*sd_skip + l*d_image + t] =
+        (1 + theta)*wkp1_tmp - theta*wk[i*msd_skip + j*sd_skip + l*d_image + t];
+    wk[i*msd_skip + j*sd_skip + l*d_image + t] = wkp1_tmp;
+    wkp1[i*msd_skip + j*sd_skip + l*d_image + t] = wkp1_tmp;
 
 #if 'W' == dataterm
     if(t == 0) {
-        wbark_tmp = 0.0;
+        wkp1_tmp = 0.0;
         for(mm = 0; mm < s_manifold; mm++) {
             // jlm,ijm->ijl
-            wbark_tmp += A[j*ss_skip + l*s_manifold + mm] *
+            wkp1_tmp += A[j*ss_skip + l*s_manifold + mm] *
                         g0kp1[i*sm_skip + j*s_manifold + mm];
         }
         for(mm = 0; mm < r_points; mm++) {
             // jlm,jmi->ijl
-            wbark_tmp -= B[j*sr_skip + l*r_points + mm] *
+            wkp1_tmp -= B[j*sr_skip + l*r_points + mm] *
                         p0kp1[P[j*r_points + mm]*n_image + i];
         }
-        wbark_tmp = w0k[i*sm_skip + j*s_manifold + l] - tau*wbark_tmp;
+        wkp1_tmp = w0k[i*sm_skip + j*s_manifold + l] - tau*wkp1_tmp;
 
-        w0bark[i*sm_skip + j*s_manifold + l] = wbark_tmp
-            + theta*(wbark_tmp - w0k[i*sm_skip + j*s_manifold + l]);
-        w0k[i*sm_skip + j*s_manifold + l] = wbark_tmp;
-        w0kp1[i*sm_skip + j*s_manifold + l] = wbark_tmp;
+        w0bark[i*sm_skip + j*s_manifold + l] =
+            (1 + theta)*wkp1_tmp - theta*w0k[i*sm_skip + j*s_manifold + l];
+        w0k[i*sm_skip + j*s_manifold + l] = wkp1_tmp;
+        w0kp1[i*sm_skip + j*s_manifold + l] = wkp1_tmp;
     }
 #endif
 }
@@ -127,6 +141,13 @@ __global__ void PrimalKernel3(KERNEL_PARAMS)
      * ubark, uk = ubark + theta*(ubark - uk), ubark
      */
 
+    SUBVAR_uk
+    SUBVAR_ubark
+    SUBVAR_ukp1
+    SUBVAR_q0kp1
+    SUBVAR_q1kp1
+    SUBVAR_p0kp1
+
     // global thread index
     int i = blockIdx.x*blockDim.x + threadIdx.x;
     int k = blockIdx.y*blockDim.y + threadIdx.y;
@@ -136,7 +157,7 @@ __global__ void PrimalKernel3(KERNEL_PARAMS)
        return;
 
     // misc.
-    double ubark_tmp;
+    double ukp1_tmp;
 
     double dataterm_factor = 1.0;
 #if 'Q' == dataterm
@@ -144,23 +165,23 @@ __global__ void PrimalKernel3(KERNEL_PARAMS)
 #endif
 
     if(uconstrloc[i]) {
-        ubark_tmp = constraint_u[k*n_image + i];
+        ukp1_tmp = constraint_u[k*n_image + i];
     } else {
-        ubark_tmp = ubark[k*n_image + i];
-        ubark_tmp += b[k]*(b_precond*q0kp1[i]);
-        ubark_tmp -= q1kp1[k*n_image + i];
+        ukp1_tmp = ubark[k*n_image + i];
+        ukp1_tmp += b[k]*(b_precond*q0kp1[i]);
+        ukp1_tmp -= q1kp1[k*n_image + i];
 #if 'Q' == dataterm
-        ubark_tmp -= b[k]*f[k*n_image + i];
+        ukp1_tmp -= b[k]*f[k*n_image + i];
 #elif 'W' == dataterm
-        ubark_tmp += b[k]*p0kp1[k*n_image + i];
+        ukp1_tmp += b[k]*p0kp1[k*n_image + i];
 #endif
-        ubark_tmp = dataterm_factor*(uk[k*n_image + i] - tau*ubark_tmp);
-        ubark_tmp = fmax(0.0,  ubark_tmp);
+        ukp1_tmp = dataterm_factor*(uk[k*n_image + i] - tau*ukp1_tmp);
+        ukp1_tmp = fmax(0.0,  ukp1_tmp);
     }
 
-    ubark[k*n_image + i] = ubark_tmp + theta*(ubark_tmp - uk[k*n_image + i]);
-    uk[k*n_image + i] = ubark_tmp;
-    ukp1[k*n_image + i] = ubark_tmp;
+    ubark[k*n_image + i] = (1 + theta)*ukp1_tmp - theta*uk[k*n_image + i];
+    uk[k*n_image + i] = ukp1_tmp;
+    ukp1[k*n_image + i] = ukp1_tmp;
 }
 
 __global__ void PrimalKernel4(KERNEL_PARAMS)
@@ -169,6 +190,11 @@ __global__ void PrimalKernel4(KERNEL_PARAMS)
      * vbark = vk - tau*vbark
      * vbark, vk = vbark + theta*(vbark - vk), vbark
      */
+
+    SUBVAR_vk
+    SUBVAR_vbark
+    SUBVAR_vkp1
+    SUBVAR_q1kp1
 
     // global thread index
     int i = blockIdx.x*blockDim.x + threadIdx.x;
@@ -180,17 +206,17 @@ __global__ void PrimalKernel4(KERNEL_PARAMS)
 
     // iteration variable and misc.
     int k;
-    double vbark_tmp;
+    double vkp1_tmp;
 
-    vbark_tmp = 0.0;
+    vkp1_tmp = 0.0;
     for(k = 0; k < l_labels; k++) {
         // km,ki->mi
-        vbark_tmp += Y[k*l_shm + m]*q1kp1[k*n_image + i];
+        vkp1_tmp += Y[k*l_shm + m]*q1kp1[k*n_image + i];
     }
 
-    vbark_tmp = vk[m*n_image + i] - tau*vbark_tmp;
+    vkp1_tmp = vk[m*n_image + i] - tau*vkp1_tmp;
 
-    vbark[m*n_image + i] = vbark_tmp + theta*(vbark_tmp - vk[m*n_image + i]);
-    vk[m*n_image + i] = vbark_tmp;
-    vkp1[m*n_image + i] = vbark_tmp;
+    vbark[m*n_image + i] = (1 + theta)*vkp1_tmp - theta*vk[m*n_image + i];
+    vk[m*n_image + i] = vkp1_tmp;
+    vkp1[m*n_image + i] = vkp1_tmp;
 }

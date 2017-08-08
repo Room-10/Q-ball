@@ -10,11 +10,25 @@ from datetime import datetime
 from argparse import ArgumentParser
 
 import logging
-logging.basicConfig(
-    stream=sys.stdout,
-    format="[%(relativeCreated) 8d] %(message)s",
-    level=logging.DEBUG
-)
+class MyFormatter(logging.Formatter):
+    def format(self, record):
+        t = int(record.relativeCreated)
+        tmillis = t % 1000
+        t = int(t / 1000)
+        tseconds =  t % 60
+        t = int(t / 60)
+        tminutes = t % 60
+        thours = int(t / 60)
+        record.relTimeCreated = '{: 2d}:{:02d}:{:02d}.{:03d}'.format(
+            thours, tminutes, tseconds, tmillis
+        )
+        return super(MyFormatter, self).format(record)
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(MyFormatter('[%(relTimeCreated)s] %(message)s'))
+logger.addHandler(ch)
 
 import dipy.core.sphere
 from dipy.reconst.shm import CsaOdfModel
@@ -201,19 +215,13 @@ class Experiment(object):
         # try to load as much data from files as possible
         self.load_imagedata()
 
-        pd_result_file = os.path.join(self.output_dir, 'result_raw.npz')
+        pd_result_file = os.path.join(self.output_dir, 'result_raw.pickle')
         details_file = os.path.join(self.output_dir, 'details.pickle')
         params_file = os.path.join(self.output_dir, 'params.pickle')
 
-        self.pd_result = data_from_file(pd_result_file)
+        self.pd_result = data_from_file(pd_result_file, format="pickle")
         if self.pd_result is not None:
-            tpl = ()
-            for i in range(20):
-                try:
-                    tpl += (self.pd_result['arr_%d'%i],)
-                except KeyError:
-                    break
-            self.pd_result = tpl
+            self.details = data_from_file(details_file, format="pickle")
 
         params = data_from_file(params_file, format="pickle")
         if params is None:
@@ -223,9 +231,14 @@ class Experiment(object):
 
         if self.pd_result is None or self.resume:
             self.solve()
-            np.savez_compressed(open(pd_result_file, 'wb'), *self.pd_result)
+            pickle.dump(self.pd_result, open(pd_result_file, 'wb'))
             pickle.dump(self.details, open(details_file, 'wb'))
-        self.upd = self.pd_result[0].copy()
+
+        # FIXME: hacky special treatment for sh_w_tvw
+        if self.model_name == "sh_w_tvw":
+            self.upd = self.pd_result[0]['u'].copy()
+        else:
+            self.upd = self.pd_result[0].copy()
 
         self.postprocessing()
 

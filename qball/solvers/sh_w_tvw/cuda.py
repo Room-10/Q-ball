@@ -2,6 +2,7 @@
 from qball.sphere import load_sphere
 from qball.tools import normalize_odf
 from qball.tools.diff import staggered_diff_avgskips
+from qball.tools.blocks import BlockVar
 from qball.solvers.sh_w_tvw.pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
 import qball.util as util
 
@@ -29,8 +30,7 @@ def qball_regularization(f, gtab, sampling_matrix,
         gtab : bvals and bvecs
         ... : more keyword arguments
     Returns:
-        pd_state : the solution; a tuple of numpy arrays
-                        (uk, vk, wk, w0k, pk, gk, q0k, q1k, p0k, g0k)
+        pd_state : the solution; a pair of block variables (xk, yk)
                    that can be put back into this function as the `continue_at`
                    parameter.
         details : dictionary containing information on the objective primal
@@ -82,39 +82,34 @@ def qball_regularization(f, gtab, sampling_matrix,
 
     obj_p = obj_d = infeas_p = infeas_d = relgap = 0.
 
+    xk = BlockVar(
+        ('u', (l_labels,) + imagedims),
+        ('v', (l_shm, n_image)),
+        ('w', (n_image, m_gradients, s_manifold, d_image)),
+        ('w0', (n_image, m_gradients, s_manifold))
+    )
+    yk = BlockVar(
+        ('p', (l_labels, d_image, n_image)),
+        ('g', (n_image, m_gradients, s_manifold, d_image)),
+        ('q0', (n_image,)),
+        ('q1', (l_labels, n_image)),
+        ('p0', (l_labels, n_image)),
+        ('g0', (n_image, m_gradients, s_manifold))
+    )
     if continue_at is None:
         # start with a uniform distribution in each voxel
-        uk = np.ones((l_labels,) + imagedims, order='C')/np.einsum('k->', b_sph.b)
+        uk = xk['u']
+        uk[:] = 1.0/np.einsum('k->', b_sph.b)
         uk[:,uconstrloc] = constraint_u[:,uconstrloc]
 
-        vk = np.zeros((l_shm, n_image), order='C')
+        vk = xk['v']
         vk[0,:] = .5 / np.sqrt(np.pi)
-        wk = np.zeros((n_image, m_gradients, s_manifold, d_image), order='C')
-        w0k = np.zeros((n_image, m_gradients, s_manifold), order='C')
-        pk = np.zeros((l_labels, d_image, n_image), order='C')
-        gk = np.zeros((n_image, m_gradients, s_manifold, d_image), order='C')
-        q0k = np.zeros(n_image)
-        q1k = np.zeros((l_labels, n_image), order='C')
-        p0k = np.zeros((l_labels, n_image), order='C')
-        g0k = np.zeros((n_image, m_gradients, s_manifold), order='C')
     else:
-        uk, vk, wk, w0k, pk, gk, q0k, q1k, p0k, g0k = (ar.copy() for ar in continue_at)
+        xk[:], yk[:] = continue_at
 
-    ukp1 = uk.copy()
-    vkp1 = vk.copy()
-    wkp1 = wk.copy()
-    w0kp1 = w0k.copy()
-    pkp1 = pk.copy()
-    gkp1 = gk.copy()
-    q0kp1 = q0k.copy()
-    q1kp1 = q1k.copy()
-    p0kp1 = p0k.copy()
-    g0kp1 = g0k.copy()
-    ubark = uk.copy()
-    vbark = vk.copy()
-    wbark = wk.copy()
-    w0bark = w0k.copy()
-    g_norms = np.zeros((n_image, m_gradients), order='C')
+    xbark = xk.copy()
+    xkp1 = xk.copy()
+    ykp1 = yk.copy()
 
     avgskips = staggered_diff_avgskips(imagedims)
 
@@ -139,35 +134,16 @@ def qball_regularization(f, gtab, sampling_matrix,
     }
 
     itervars = {
-         'uk': uk,
-         'vk': vk,
-         'wk': wk,
-         'w0k': w0k,
-         'ukp1': ukp1,
-         'vkp1': vkp1,
-         'wkp1': wkp1,
-         'w0kp1': w0kp1,
-         'ubark': ubark,
-         'vbark': vbark,
-         'wbark': wbark,
-         'w0bark': w0bark,
-         'pk': pk,
-         'gk': gk,
-         'q0k': q0k,
-         'q1k': q1k,
-         'p0k': p0k,
-         'g0k': g0k,
-         'pkp1': pkp1,
-         'gkp1': gkp1,
-         'q0kp1': q0kp1,
-         'q1kp1': q1kp1,
-         'p0kp1': p0kp1,
-         'g0kp1': g0kp1
+         'xk': xk,
+         'xbark': xbark,
+         'xkp1': xkp1,
+         'yk': yk,
+         'ykp1': ykp1,
     }
 
     extravars = {
         'dataterm_factor': dataterm_factor,
-        'g_norms': g_norms,
+        'g_norms': np.zeros((n_image, m_gradients), order='C'),
         'b_sph': b_sph
     }
 
@@ -203,13 +179,13 @@ def qball_regularization(f, gtab, sampling_matrix,
             'ndl_skip': n_image*d_image*l_labels,
         })
         cuda_templates = [
-            ("DualKernel1", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-            ("DualKernel2", (l_labels, n_image, d_image), (16, 16, 1)),
-            ("DualKernel3", (n_image, m_gradients, 1), (16, 16, 1)),
             ("PrimalKernel1", (l_labels, 1, 1), (16, 1, 1)),
             ("PrimalKernel2", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
             ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1)),
             ("PrimalKernel4", (n_image, l_shm, 1), (16, 16, 1)),
+            ("DualKernel1", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("DualKernel2", (l_labels, n_image, d_image), (16, 16, 1)),
+            ("DualKernel3", (n_image, m_gradients, 1), (16, 16, 1)),
         ]
         from pkg_resources import resource_stream
         cuda_files = [
@@ -254,7 +230,7 @@ def qball_regularization(f, gtab, sampling_matrix,
                 if interrupt_hdl.interrupted:
                     break
 
-    return (uk, vk, wk, w0k, pk, gk, q0k, q1k, p0k, g0k), {
+    return (xk, yk), {
         'objp': obj_p,
         'objd': obj_d,
         'infeasp': infeas_p,

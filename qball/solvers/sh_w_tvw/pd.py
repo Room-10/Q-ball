@@ -6,20 +6,13 @@ import numpy as np
 from numpy.linalg import norm
 from numba import jit
 
-def compute_primal_obj(uk, vk, wk, w0k,
-                       ubark, vbark, wbark, w0bark,
-                       ukp1, vkp1, wkp1, w0kp1,
-                       pk, gk, q0k, q1k, p0k, g0k,
-                       pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
+def compute_primal_obj(xk, xbark, xkp1, yk, ykp1,
                        sigma, tau, lbd, theta, dataterm_factor,
                        b_sph, f, Y, constraint_u, uconstrloc,
                        dataterm, avgskips, g_norms):
-    pgrad = pkp1.copy()
-    ggrad = gkp1.copy()
-    q0grad = q0kp1.copy()
-    q1grad = q1kp1.copy()
-    p0grad = p0kp1.copy()
-    g0grad = g0kp1.copy()
+    ukp1, vkp1, wkp1, w0kp1 = xkp1.vars()
+    ygrad = ykp1.copy()
+    pgrad, ggrad, q0grad, q1grad, p0grad, g0grad = ygrad.vars()
 
     # pgrad = diag(b) Du - P'B'w
     # ggrad^ij = A^j' w^ij
@@ -27,11 +20,10 @@ def compute_primal_obj(uk, vk, wk, w0k,
     # q1grad = Yv - u
     # p0grad = diag(b) (u-f) - P'B'w0 (W1)
     # g0grad^ij = A^j' w0^ij (W1)
-    manifold_op(
-        ukp1, vkp1, wkp1, w0kp1,
-        pgrad, ggrad, q0grad, q1grad, p0grad, g0grad,
-        b_sph, f, Y, dataterm, avgskips
-    )
+    manifold_op(xkp1, ygrad, b_sph, f, Y, dataterm, avgskips)
+    p0grad -= np.einsum('k,ki->ki', b_sph.b, f.reshape(f.shape[0], -1))
+    q0grad -= 1.0
+    q0grad *= b_sph.b_precond
     norms_nuclear(ggrad, g_norms)
 
     if dataterm == "quadratic":
@@ -66,29 +58,20 @@ def compute_primal_obj(uk, vk, wk, w0k,
 
     return obj_p, infeas_p
 
-def compute_dual_obj(uk, vk, wk, w0k,
-                     ubark, vbark, wbark, w0bark,
-                     ukp1, vkp1, wkp1, w0kp1,
-                     pk, gk, q0k, q1k, p0k, g0k,
-                     pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
+def compute_dual_obj(xk, xbark, xkp1, yk, ykp1,
                      sigma, tau, lbd, theta, dataterm_factor,
                      b_sph, f, Y, constraint_u, uconstrloc,
                      dataterm, avgskips, g_norms):
-    ugrad = ukp1.copy()
-    vgrad = vkp1.copy()
-    wgrad = wkp1.copy()
-    w0grad = w0kp1.copy()
+    pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1 = ykp1.vars()
+    xgrad = xkp1.copy()
+    ugrad, vgrad, wgrad, w0grad = xgrad.vars()
 
     # ugrad = b q0' - q1 - diag(b) f + diag(b) D' p (quadratic)
     # ugrad = b q0' - q1 + diag(b) p0 + diag(b) D' p (W1)
     # vgrad = Y'q1
     # wgrad = Ag - BPp
     # w0grad = Ag0 - BPp0 (W1)
-    manifold_op_adjoint(
-        ugrad, vgrad, wgrad, w0grad,
-        pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
-        b_sph, f, Y, dataterm, avgskips
-    )
+    manifold_op_adjoint(xgrad, ykp1, b_sph, f, Y, dataterm, avgskips)
 
     if dataterm == "quadratic":
         # obj_d = -\sum_i q0_i + 0.5*b*[f^2 - min(0, q0 + D'p - f)^2]
@@ -126,80 +109,50 @@ def compute_dual_obj(uk, vk, wk, w0k,
 
     return obj_d, infeas_d
 
-def pd_iteration_step(uk, vk, wk, w0k,
-                      ubark, vbark, wbark, w0bark,
-                      ukp1, vkp1, wkp1, w0kp1,
-                      pk, gk, q0k, q1k, p0k, g0k,
-                      pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
+def pd_iteration_step(xk, xbark, xkp1, yk, ykp1,
                       sigma, tau, lbd, theta, dataterm_factor,
                       b_sph, f, Y, constraint_u, uconstrloc,
                       dataterm, avgskips, g_norms):
-    # duals
-    manifold_op(
-        ubark, vbark, wbark, w0bark,
-        pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
-        b_sph, f, Y, dataterm, avgskips
-    )
-    pkp1[:] = pk + sigma*pkp1
-    gkp1[:] = gk + sigma*gkp1
-    q0kp1[:] = q0k + sigma*q0kp1
-    q1kp1[:] = q1k + sigma*q1kp1
-    p0kp1[:] = p0k + sigma*p0kp1
-    g0kp1[:] = g0k + sigma*g0kp1
-    project_gradients(gkp1, lbd, g_norms)
-    project_gradients(g0kp1[:,:,:,np.newaxis], 1.0, g_norms)
-    # update
-    pk[:] = pkp1
-    gk[:] = gkp1
-    q0k[:] = q0kp1
-    q1k[:] = q1kp1
-    p0k[:] = p0kp1
-    g0k[:] = g0kp1
-
     # primals
-    manifold_op_adjoint(
-        ukp1, vkp1, wkp1, w0kp1,
-        pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1,
-        b_sph, f, Y, dataterm, avgskips
-    )
-    np.einsum('k,k...->k...', dataterm_factor, uk - tau*ukp1, out=ukp1)
+    manifold_op_adjoint(xkp1, ykp1, b_sph, f, Y, dataterm, avgskips)
+    xkp1[:] = xk - tau*xkp1
+    # prox
+    ukp1 = xkp1['u']
+    ukp1[:] = np.einsum('k,k...->k...', dataterm_factor, ukp1)
     ukp1[:] = np.fmax(0.0, ukp1)
     ukp1[:,uconstrloc] = constraint_u[:,uconstrloc]
-    vkp1[:] = vk - tau*vkp1
-    wkp1[:] = wk - tau*wkp1
-    w0kp1[:] = w0k - tau*w0kp1
-    # overrelaxation
-    ubark[:] = ukp1 + theta * (ukp1 - uk)
-    vbark[:] = vkp1 + theta * (vkp1 - vk)
-    wbark[:] = wkp1 + theta * (wkp1 - wk)
-    w0bark[:] = w0kp1 + theta * (w0kp1 - w0k)
-    # update
-    uk[:] = ukp1
-    vk[:] = vkp1
-    wk[:] = wkp1
-    w0k[:] = w0kp1
+    xbark[:] = (1 + theta)*xkp1 - theta*xk
+    xk[:] = xkp1
 
+    # duals
+    manifold_op(xbark, ykp1, b_sph, f, Y, dataterm, avgskips)
+    ykp1[:] = yk + sigma*ykp1
+    # prox
+    pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1 = ykp1.vars()
+    project_gradients(gkp1, lbd, g_norms)
+    q0kp1 -= sigma*b_sph.b_precond
+    p0kp1 -= sigma*np.einsum('k,ki->ki', b_sph.b, f.reshape(f.shape[0], -1))
+    project_gradients(g0kp1[:,:,:,np.newaxis], 1.0, g_norms)
+    yk[:] = ykp1
 
-def manifold_op(u, v, w, w0, pgrad, ggrad, q0grad, q1grad, p0grad, g0grad,
-                b_sph, f, Y, dataterm, avgskips):
-    """ Apply the linear operator in the model to (u,v,w,w0).
+    """
+    The Goldstein adaptive stepsizes are very memory intensive.
+    They require xk, xkp1, xgradk, xgradkp1.
+    That's double the memory we currently use.
+    """
+
+def manifold_op(x, ygrad, b_sph, f, Y, dataterm, avgskips):
+    """ Apply the linear operator in the model to x.
 
     Args:
-        u : numpy array of shape (l_labels, imagedims...)
-        v : numpy array of shape (l_shm, n_image)
-        w : numpy array of shape (n_image, m_gradients, s_manifold, d_image)
-        w0 : numpy array of shape (n_image, m_gradients, s_manifold)
-        pgrad : numpy array of shape (l_labels, d_image, n_image)
-        ggrad : numpy array of shape (n_image, m_gradients, s_manifold, d_image)
-        q0grad : numpy array of shape (n_image)
-        q1grad : numpy array of shape (l_labels, n_image)
-        p0grad : numpy array of shape (l_labels, n_image)
-        g0grad : numpy array of shape (n_image, m_gradients, s_manifold)
-        avgskips : output of `staggered_diff_avgskips(imagedims)`
+        x : primal variable
+        ygrad : dual variable
+        ... : more constants
     Returns:
-        nothing, the result is written to the given arrays `pgrad`, `ggrad`,
-        `q0grad`, `q1grad`, `p0grad` and `g0grad`.
+        nothing, the result is written to the given `ygrad`.
     """
+    u, v, w, w0 = x.vars()
+    pgrad, ggrad, q0grad, q1grad, p0grad, g0grad = ygrad.vars()
 
     l_labels = u.shape[0]
     imagedims = u.shape[1:]
@@ -218,9 +171,8 @@ def manifold_op(u, v, w, w0, pgrad, ggrad, q0grad, q1grad, p0grad, g0grad,
     # ggrad^ij = A^j' w^ij
     np.einsum('jlm,ijlt->ijmt', b_sph.A, w, out=ggrad)
 
-    # q0grad = b'u - 1
+    # q0grad = b'u
     np.einsum('i,ij->j', b_sph.b, u.reshape(l_labels, n_image), out=q0grad)
-    q0grad -= 1.0
     q0grad *= b_sph.b_precond
 
     # q1grad = Yv - u
@@ -228,8 +180,8 @@ def manifold_op(u, v, w, w0, pgrad, ggrad, q0grad, q1grad, p0grad, g0grad,
     q1grad -= u.reshape(l_labels, n_image)
 
     if dataterm == "W1":
-        # p0grad = diag(b) (u-f)
-        np.einsum('k,ki->ki', b_sph.b, (u-f).reshape(l_labels, -1), out=p0grad)
+        # p0grad = diag(b) u
+        np.einsum('k,ki->ki', b_sph.b, u.reshape(l_labels, -1), out=p0grad)
         # p0grad^i += - P^j' B^j' w0^ij
         _apply_PB0(p0grad, b_sph.P, b_sph.B, w0)
         # g0grad^ij += A^j' w0^ij
@@ -260,26 +212,18 @@ def _apply_PB0(p0grad, P, B, w0):
                 for m in range(B.shape[2]):
                     p0grad[P[j,m],i] -= B[j,l,m] * w0[i,j,l]
 
-def manifold_op_adjoint(ugrad, vgrad, wgrad, w0grad, p, g, q0, q1, p0, g0,
-                        b_sph, f, Y, dataterm, avgskips):
-    """ Apply the adjoint linear operator in the model to (p,g,q0,q1,p0,g0).
+def manifold_op_adjoint(xgrad, y, b_sph, f, Y, dataterm, avgskips):
+    """ Apply the adjoint linear operator in the model to y
 
     Args:
-        ugrad : numpy array of shape (l_labels, imagedims...)
-        vgrad : numpy array of shape (l_shm, n_image)
-        wgrad : numpy array of shape (n_image, m_gradients, s_manifold, d_image)
-        w0grad : numpy array of shape (n_image, m_gradients, s_manifold)
-        p : numpy array of shape (l_labels, d_image, n_image)
-        g : numpy array of shape (n_image, m_gradients, s_manifold, d_image)
-        q0 : numpy array of shape (n_image)
-        q1 : numpy array of shape (l_labels, n_image)
-        p0 : numpy array of shape (l_labels, n_image)
-        g0 : numpy array of shape (n_image, m_gradients, s_manifold)
-        avgskips : output of `staggered_diff_avgskips(imagedims)`
+        xgrad : primal variable
+        y : dual variable
+        ... : more constants
     Returns:
-        nothing, the result is written to the given arrays `ugrad`, `vgrad`,
-        `wgrad` and `w0grad`.
+        nothing, the result is written to the given `xgrad`.
     """
+    ugrad, vgrad, wgrad, w0grad = xgrad.vars()
+    p, g, q0, q1, p0, g0 = y.vars()
 
     l_labels = ugrad.shape[0]
     imagedims = ugrad.shape[1:]
