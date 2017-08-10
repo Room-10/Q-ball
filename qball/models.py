@@ -40,7 +40,7 @@ class sh_w_tvw_Model(CsaOdfModel):
         if solver_engine == "cvx":
             from qball.solvers.sh_w_tvw.cvx import qball_regularization
         else:
-            from qball.solvers.sh_w_tvw.cuda import qball_regularization
+            from qball.solvers.sh_w_tvw.pd import qball_regularization
         self.solver_func = qball_regularization
         self.solver_params = solver_params
         return CsaOdfModel.fit(self, *args, **kwargs)
