@@ -12,22 +12,15 @@ from argparse import ArgumentParser
 import logging
 class MyFormatter(logging.Formatter):
     def format(self, record):
-        t = int(record.relativeCreated)
-        tmillis = t % 1000
-        t = int(t / 1000)
-        tseconds =  t % 60
-        t = int(t / 60)
-        tminutes = t % 60
-        thours = int(t / 60)
-        record.relTimeCreated = '{: 2d}:{:02d}:{:02d}.{:03d}'.format(
-            thours, tminutes, tseconds, tmillis
-        )
+        th, rem = divmod(record.relativeCreated/1000.0, 3600)
+        tm, ts = divmod(rem, 60)
+        record.relStrCreated = "% 2d:%02d:%06.3f" % (int(th),int(tm),ts)
         return super(MyFormatter, self).format(record)
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
-ch.setFormatter(MyFormatter('[%(relTimeCreated)s] %(message)s'))
+ch.setFormatter(MyFormatter('[%(relStrCreated)s] %(message)s'))
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
 logger.addHandler(ch)
 
 import dipy.core.sphere
