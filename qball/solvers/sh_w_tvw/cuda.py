@@ -1,9 +1,11 @@
 
 from qball.sphere import load_sphere
-from qball.tools import normalize_odf
+from qball.tools import normalize_odf, truncate
 from qball.tools.diff import staggered_diff_avgskips
-from qball.tools.blocks import BlockVar
-from qball.solvers.sh_w_tvw.pd import pd_iteration_step, compute_primal_obj, compute_dual_obj
+from qball.tools.blocks import BlockVar, block_normest
+from qball.solvers.sh_w_tvw.pd \
+    import pd_iteration_step, compute_primal_obj, compute_dual_obj, \
+           linop, linop_adjoint
 import qball.util as util
 
 import numpy as np
@@ -74,12 +76,6 @@ def qball_regularization(f, gtab, sampling_matrix,
         constraint_u[:] = np.nan
     uconstrloc = np.any(np.logical_not(np.isnan(constraint_u)), axis=0)
 
-    bnd = step_bound   # < 1/|K|^2
-    fact = step_factor # tau/sigma
-    sigma = np.sqrt(bnd/fact)
-    tau = bnd/sigma
-    theta = 0.99
-
     obj_p = obj_d = infeas_p = infeas_d = relgap = 0.
 
     xk = BlockVar(
@@ -112,6 +108,16 @@ def qball_regularization(f, gtab, sampling_matrix,
     ykp1 = yk.copy()
 
     avgskips = staggered_diff_avgskips(imagedims)
+
+    op = lambda x,y: linop(x, y, b_sph, f, Y, dataterm, avgskips)
+    opadj = lambda x,y: linop_adjoint(x, y, b_sph, f, Y, dataterm, avgskips)
+    op_norm, itn = block_normest(xk.copy(), yk.copy(), op, opadj)
+    # round (floor) to 3 significant digits
+    bnd = truncate(1.0/op_norm**2, 3) # < 1/|K|^2
+    fact = step_factor # tau/sigma
+    sigma = np.sqrt(bnd/fact)
+    tau = bnd/sigma
+    theta = 0.99
 
     if dataterm == "quadratic":
         dataterm_factor = 1.0/(1.0 + tau*b_sph.b)

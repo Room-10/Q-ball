@@ -2,6 +2,16 @@
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 
+def truncate(x, n):
+    k = -int(np.floor(np.log10(abs(x))))
+    # Example: x = 0.006142 => k = 3 / x = 2341.2 => k = -3
+    k += n - 1
+    if k > 0:
+        x_str = str(abs(x))[:(k+2)]
+    else:
+        x_str = str(abs(x))[:n]+"0"*(-k)
+    return np.sign(x)*float(x_str)
+
 def normalize_odf(odf, vol):
     odf_flat = odf.reshape(odf.shape[0], -1)
     odf_sum = np.einsum('k,ki->i', vol, odf_flat)

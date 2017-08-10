@@ -20,7 +20,7 @@ def compute_primal_obj(xk, xbark, xkp1, yk, ykp1,
     # q1grad = Yv - u
     # p0grad = diag(b) (u-f) - P'B'w0 (W1)
     # g0grad^ij = A^j' w0^ij (W1)
-    manifold_op(xkp1, ygrad, b_sph, f, Y, dataterm, avgskips)
+    linop(xkp1, ygrad, b_sph, f, Y, dataterm, avgskips)
     p0grad -= np.einsum('k,ki->ki', b_sph.b, f.reshape(f.shape[0], -1))
     q0grad -= 1.0
     q0grad *= b_sph.b_precond
@@ -71,7 +71,7 @@ def compute_dual_obj(xk, xbark, xkp1, yk, ykp1,
     # vgrad = Y'q1
     # wgrad = Ag - BPp
     # w0grad = Ag0 - BPp0 (W1)
-    manifold_op_adjoint(xgrad, ykp1, b_sph, f, Y, dataterm, avgskips)
+    linop_adjoint(xgrad, ykp1, b_sph, f, Y, dataterm, avgskips)
 
     if dataterm == "quadratic":
         # obj_d = -\sum_i q0_i + 0.5*b*[f^2 - min(0, q0 + D'p - f)^2]
@@ -114,7 +114,7 @@ def pd_iteration_step(xk, xbark, xkp1, yk, ykp1,
                       b_sph, f, Y, constraint_u, uconstrloc,
                       dataterm, avgskips, g_norms):
     # primals
-    manifold_op_adjoint(xkp1, ykp1, b_sph, f, Y, dataterm, avgskips)
+    linop_adjoint(xkp1, ykp1, b_sph, f, Y, dataterm, avgskips)
     xkp1[:] = xk - tau*xkp1
     # prox
     ukp1 = xkp1['u']
@@ -125,7 +125,7 @@ def pd_iteration_step(xk, xbark, xkp1, yk, ykp1,
     xk[:] = xkp1
 
     # duals
-    manifold_op(xbark, ykp1, b_sph, f, Y, dataterm, avgskips)
+    linop(xbark, ykp1, b_sph, f, Y, dataterm, avgskips)
     ykp1[:] = yk + sigma*ykp1
     # prox
     pkp1, gkp1, q0kp1, q1kp1, p0kp1, g0kp1 = ykp1.vars()
@@ -141,7 +141,7 @@ def pd_iteration_step(xk, xbark, xkp1, yk, ykp1,
     That's double the memory we currently use.
     """
 
-def manifold_op(x, ygrad, b_sph, f, Y, dataterm, avgskips):
+def linop(x, ygrad, b_sph, f, Y, dataterm, avgskips):
     """ Apply the linear operator in the model to x.
 
     Args:
@@ -212,7 +212,7 @@ def _apply_PB0(p0grad, P, B, w0):
                 for m in range(B.shape[2]):
                     p0grad[P[j,m],i] -= B[j,l,m] * w0[i,j,l]
 
-def manifold_op_adjoint(xgrad, y, b_sph, f, Y, dataterm, avgskips):
+def linop_adjoint(xgrad, y, b_sph, f, Y, dataterm, avgskips):
     """ Apply the adjoint linear operator in the model to y
 
     Args:
