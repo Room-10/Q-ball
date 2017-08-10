@@ -1,5 +1,41 @@
 
 import numpy as np
+from numpy.linalg import norm
+
+def block_normest(x, y, op, opadj, tol=1.0e-6, maxits=1000):
+    """ Estimate the spectral norm of the given linear operator op/opadj.
+    """
+    m, n = y.data.size, x.data.size
+    itn = 0
+
+    # Compute an estimate of the abs-val column sums.
+    y[:] = np.ones(m)
+    y[np.random.randn(m) < 0] = -1
+    opadj(x,y)
+    x[:] = abs(x.data)
+
+    # Normalize the starting vector.
+    e = norm(x.data)
+    if e < 1e-13:
+        return e, itn
+    x *= 1.0/e
+    e0 = 0
+    while abs(e-e0) > tol*e:
+        e0 = e
+        op(x, y)
+        normy = norm(y.data)
+        if normy < 1e-13:
+            y[:] = np.random.rand(m)
+            normy = norm(y.data)
+        opadj(x, y)
+        normx = norm(x.data)
+        e = normx/normy
+        x *= 1.0/normx
+        itn += 1
+        if itn > maxits:
+            print("Warning: normest didn't converge!")
+            break
+    return e, itn
 
 class BlockVar(object):
     def __init__(self, *args):
@@ -25,22 +61,22 @@ class BlockVar(object):
         return [self[a[0]] for a in self._args]
 
     def __getitem__(self, idx):
-        if isinstance(idx, slice):
-            return self.data[idx]
-        else:
+        if isinstance(idx, str):
             offset, dim = self._descr[idx]
             size = np.prod(dim)
             return self.data[offset:offset+size].reshape(dim)
+        else:
+            return self.data[idx]
 
     def __setitem__(self, idx, value):
-        if isinstance(idx, slice):
-            if isinstance(value, BlockVar):
-                value = value.data
-            self.data[idx] = value
-        else:
+        if isinstance(idx, str):
             offset, dim = self._descr[idx]
             size = np.prod(dim)
             self.data[offset:offset+size] = value
+        else:
+            if isinstance(value, BlockVar):
+                value = value.data
+            self.data[idx] = value
 
     def __sub__(self, other):
         return self + (-1.0)*other
