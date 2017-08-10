@@ -1,0 +1,73 @@
+
+\subsection{Notation and variables involved}
+
+We assume a $d$-dimensional image domain $\Omega$ that is discretized using
+$n$ points $x^1, \dots, x^n \in \Omega$.
+Differentiation in $\Omega$ is done on a staggered grid with Neumann boundary
+conditions such that the dual operator to the differential operator $D$ is the
+negative divergence with vanishing boundary values.
+We assume that the image takes values in the space of
+probability measures on manifold $\IM = \IS^2$ of dimension $s=2$ that is
+discretized using $l$ points $z^1, \dots, z^l \in \IM$. 
+
+Integration on $\Omega \times \IM$ is discretized as
+\begin{equation}\label{eq:discrete-int}
+    \langle u, v \rangle_b := \sum_{i,k} b_{k} u_k^i v_k^i
+    \vspace{-7.5pt}
+\end{equation}
+whenever $u,v \in \IR^{n,l}$ are the discretizations of functions on
+$\Omega \times \IM$, i.\,e. $u_k^i \approx u(x^i,z^k)$.
+Equation \eqref{eq:discrete-int} assumes uniform spacing of the $x^i \in \Omega$,
+but makes use of a weight vector $b \in \IR^l$ to account for the volume element
+at each $z^k \in \IM$.
+
+Gradients of functions on $\IM$ are defined on a staggered grid of $m$ points
+$y^1, \dots, y^m \in \IM$ such that each $y^j$ has $r=3$ neighboring points $
+    \nbhd_j \subset \{1, \dots, l\}$, $\#\nbhd_j = r,
+$ among the $z^k$.
+The corresponding tangent vectors
+\begin{equation}
+    v^{j,k} := \exp^{-1}_{y_j}(z^k) \in T_{y_j}\IM,
+\end{equation}
+pointing from $y^j$ in the direction of $z^k$, $k \in \nbhd_j$, are encoded in
+the matrix $M^j \in \IR^{r,s}$ such that $
+    \langle v^{j,k}, v \rangle = (M^j v)_k
+$, whenever $v \in \IR^s \cong T_{y_j}\IM$.
+
+We regard the gradient $g \in \IR^{m,s}$ of a function $p \in \IR^{l}$ on the
+manifold as the vector in the tangent space that allows for the best pointwise
+approximation of $p$ in an $l^2$-sense:
+\begin{equation}\label{eq:approx-grad-on-M}
+    g^j = \argmin_{v \in \IR^s} \min_{c \in \IR} \sum_{k \in \nbhd_j} (
+        c + \langle v^{j,k}, v \rangle - p^k
+    )^2.
+\end{equation}
+The variable $c$ replaces the value of $p$ at $y^j$ which is unknown since $p$
+is discretized on the points $z^k$ only.
+The first order optimality conditions for \eqref{eq:approx-grad-on-M} can be
+written in the compact form
+\begin{equation}
+    A^j g^j = B^j P^j p,
+\end{equation}
+where, for each $j$, the sparse matrix $P^j \in \{0,1\}^{r,l}$ encodes the neighborhood
+relations of $y^j$ and $A^j \in \IR^{s,s}$, $B^j \in \IR^{s,r}$ are defined by
+\begin{align}
+    A^j := B^j M^j, &&
+    B^j := {M^j}^T E, &&
+    E := (I - r^{-1} ee^T), &&
+    e := (1, \dots, 1) \in \IR^r.
+\end{align}
+
+Furthermore, a spherical harmonics sampling Matrix $\Psi \in \IR^{l,l'}$ is
+introduced so that $\Psi_{k',k} = Y_{k'}(z^k)$.
+$l'$ is the number of spherical harmonics basis functions used.
+
+In the following, the dimensions of the primal and dual variables are 
+\begin{align*}
+    & u \in \IR^{l,n}, && v \in \IR^{l',n}, && w \in \IR^{n,m,s,d}, && w_0 \in \IR^{n,m,s}, \\
+    & p \in \IR^{l,d,n}, && g \in \IR^{n,m,s,d}, && q \in \IR^{n},
+        && p_0 \in \IR^{l,n}, && g_0 \in \IR^{n,m,s}
+\end{align*}
+and the input or reference image is given by $f \in \IR^{l,n}$.
+Further variables $u_i \in \IR^{l,n}$ and $q_i \in \IR^{l,n}$ are introduced
+as needed.

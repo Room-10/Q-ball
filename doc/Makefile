@@ -5,7 +5,14 @@ DOKUMENT := main
 CHPT_DIR := chpt
 CHAPTERS := $(CHPT_DIR)/pre-model.tex \
             $(CHPT_DIR)/pre-W1-TV.tex \
-            $(CHPT_DIR)/W1-TV.tex
+            $(CHPT_DIR)/numerics-notation.tex \
+            $(CHPT_DIR)/numerics-n_w_tvw.tex \
+            $(CHPT_DIR)/numerics-n_l_tvw.tex \
+            $(CHPT_DIR)/numerics-sh_w_tvw.tex \
+            $(CHPT_DIR)/numerics-sh_l_tvw.tex \
+            $(CHPT_DIR)/numerics-sh_l_tvc.tex \
+            $(CHPT_DIR)/numerics-sh_bndl1_tvc.tex \
+            $(CHPT_DIR)/numerics-sh_bndl2_tvc.tex
             
 HEADER_DIR := .
 HEADERS := $(HEADER_DIR)/header.tex

@@ -1,0 +1,134 @@
+
+\subsection{Ouyang with confidence-interval-based fidelity term and L1 penalty}
+
+\paragraph{Saddle point form}
+
+We combine the regularizer from Ouyang '14 with a confidence-interval based
+fidelity term and $L_1$ penalty outside the interval.
+Again, we need the spherical harmonics sampling Matrix $\Psi \in \IR^{l,l'}$
+and the reconstruction matrix $M \in \IR^{l',l'}$.
+Instead of $f = \log(-\log(E))$, we are given $f_1$ and $f_2$ such that the
+ground truth $f$ satisfies $f_1 \leq f \leq f_2$.
+The problem's saddle point form then reads
+\begin{align*}
+    \min_{u_1,u_2,v} \max_{p} \quad
+        & \max(0, f_1 - u_2) + \max(0, u_2 - f_2) + \langle Dv, p \rangle \\
+    \text{s.t.}\quad 
+        & \Psi M v^i = u_2^i, ~\Psi v^i = u_1^i ~\forall i, \\
+        & u_1^i \geq 0, ~\langle u_1^i, b \rangle = 1 ~\forall i, \\
+        & \|p^{i}\|_{2} \leq \lambda ~\forall i.
+\end{align*}
+or, using more variables and less constraints,
+\begin{align*}
+    \min_{u_1,u_2,v} \max_{p,q_0,q_1,q_2,q_3,q_4} \quad
+        & \langle q_3, f_1 - u_2 \rangle + \langle q_4, u_2 - f_2 \rangle
+            + \langle Dv, p \rangle
+            + \sum_{i} q_0^i \cdot (b^T u_1^i - 1) \\
+        &\quad + \sum_{i} \langle q_1^i, \Psi v^i - u_1^i \rangle
+            + \sum_{i} \langle q_2^i, \Psi M v^i - u_2^i \rangle \\
+    \text{s.t.}\quad 
+        & u_1^i \geq 0, ~\|p^{i}\|_{2} \leq \lambda,
+          ~0 \leq q_3^i \leq 1, ~0 \leq q_4^i \leq 1 ~\forall i.
+\end{align*}
+Here, we denote the Frobenius- or euclidean norm by $\|\cdot\|_{2}$.
+
+\paragraph{Primal and dual objectives}
+
+Accordingly, the primal formulation of the problem is
+\begin{align*}
+    \min_{u_1,u_2,v} \quad
+        & \max(0, f_1 - u_2) + \max(0, u_2 - f_2)
+            + \lambda \sum_{i} \| (D v)^{i} \|_{2} \\
+    \text{s.t.}\quad 
+        & \Psi M v^i = u_2^i, ~\Psi v^i = u_1^i ~\forall i, \\
+        & u_1^i \geq 0, ~\langle u_1^i, b \rangle = 1 ~\forall i
+\end{align*}
+and the dual formulation is
+\begin{align*}
+    \max_{p,q_0,q_1,q_2,q_3,q_4} \quad
+        & \langle q_3, f_1 \rangle - \langle q_4, f_2 \rangle - \sum_i q_0^i  \\
+    \text{s.t.}\quad 
+        & \|p^{i}\|_{2} \leq \lambda ~\forall i, \\
+        & q_0^i b^k - q_1^{ki} \geq 0 ~\forall i, k, \\
+        & \Psi^T q_1^i + M \Psi^T q_2^i - (\divergence p)^i = 0 ~\forall i, \\
+        & q_4 - q_3 - q_2 = 0.
+\end{align*}
+
+\paragraph{Proximal mappings}
+
+We rewrite the saddle point form as follows:
+\begin{align*}
+    \min_{u_1,u_2,v} \max_{p,q_0,q_1,\dots} \quad
+        & G(u_1,u_2,v) + \langle K(u_1,u_2,v), (p,q_0,q_1,\dots) \rangle - F^*(p,q_0,q_1,\dots),
+\end{align*}
+where, writing $\beta = \diag(b)$,
+\begin{align*}
+    G(u_1,u_2,v) &= \delta_{\{u_1 \geq 0\}}, \\
+    F^*(p,q_0,q_1,\dots) &= \langle q_3, f_1 \rangle - \langle q_4, f_2 \rangle
+        + \sum_{i} q_0^i 
+        + \sum_{i} \delta_{\{\|p^{i}\|_{2} \leq \lambda\}}
+        + \delta_{\{0 \leq q_3 \leq 1\}} + \delta_{\{0 \leq q_4 \leq 1\}}, \\
+    K(u_1,u_2,v) &= (
+        Dv,
+        b^T u_1,
+        \Psi v^i - u_1^i,
+        \Psi M v^i - u_2^i,
+        -u_2,
+        u_2
+    ), \\
+    K^*(p,q_0,q_1,\dots) &= (
+        q \otimes b - q_1,
+        q_4 - q_3 - q_2,
+        \Psi^T q_1^i + M \Psi^T q_2^i - \divergence{p}
+    ).
+\end{align*}
+
+For a first-order approach we use the proximal mappings
+\begin{align*}
+    \Prox_{\sigma F*}(\bar{p},\bar{q_0},\bar{q_1},\dots)
+    &= \argmin_{p,q_0,q_1,\dots} \left\{
+        \frac{\|
+            (p,q_0,q_1,\dots)-(\bar{p},\bar{q_0},\bar{q_1},\dots)
+        \|^2}{2\sigma} + F^*(p,q_0,q_1,\dots)
+    \right\} \\
+    &= (
+        \proj_{\lambda,2}(\bar{p}),
+        \bar{q_0}-\sigma e,
+        \bar{q_1},
+        \bar{q_2},
+        \proj_{[0,1]}(\bar{q_3} - \sigma f_1),
+        \proj_{[0,1]}(\bar{q_4} + \sigma f_2)
+   ),
+\end{align*}
+where $e = (1,\dots,1)$, and
+\begin{align*}
+    \Prox_{\tau G}(\bar{u_1},\bar{u_2},\bar{v})
+    &= \argmin_{u_1,u_2,v,w} \left\{
+        \frac{\|
+            (u_1,u_2,v)-(\bar{u_1},\bar{u_2},\bar{v})
+        \|^2}{2\tau} + G(u_1,u_2,v)
+    \right\} \\
+    &= \left(
+        \max(0,\bar{u_1}),
+        \bar{u_2},
+        \bar{v}
+    \right).
+\end{align*}
+
+\paragraph{The algorithm}
+
+Now we have everything in place to formulate the algorithm:
+\begin{align*}
+    (p^{k+1},q_0^{k+1},q_1^{k+1},\dots) &= \Prox_{\sigma F^*}(
+        (p^{k},q_0^{k},q_1^{k},\dots)
+        + \sigma K(\bar{u_1}^{k},\bar{u_2}^{k},\bar{v}^{k})
+    ), \\
+    (u_1^{k+1},u_2^{k+1},v^{k+1}) &= \Prox_{\tau G}(
+        (u_1^{k},u_2^{k},v^{k})
+        - \tau K^*(p^{k+1},q_0^{k+1},q_1^{k+1},\dots)
+    ), \\
+    \bar{u_1}^{k+1} &= u_1^{k+1} + \theta(u_1^{k+1}-u_1^{k}), \\
+    \bar{u_2}^{k+1} &= u_2^{k+1} + \theta(u_2^{k+1}-u_2^{k}), \\
+    \bar{v}^{k+1} &= v^{k+1} + \theta(v^{k+1}-v^{k}).
+\end{align*}
+
