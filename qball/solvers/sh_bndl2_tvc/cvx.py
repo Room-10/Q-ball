@@ -26,6 +26,8 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     fl = np.zeros((l_labels, n_image), order='C')
     fu = np.zeros((l_labels, n_image), order='C')
     
+    lbd = 1.0
+    
     c = 0.05
     for i in range(n_image):
         for k in range(l_labels):
@@ -44,10 +46,6 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     fu -= fl_mean
     fl -= fu_mean
     
-    ###################
-#    lbd = lbd*100
-    ###################
- 
     Y = np.zeros(sampling_matrix.shape, order='C')
     Y[:] = sampling_matrix
     l_shm = Y.shape[1]
@@ -67,25 +65,21 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     q0 = cvxVariable(n_image)
     q1 = cvxVariable(l_labels, n_image)
     q2 = cvxVariable(l_labels, n_image)
-    q3 = cvxVariable(l_labels, n_image)
-    q4 = cvxVariable(l_labels, n_image)
+    
+    fid_fun_dual = 0
+    
+    for k in range(l_labels):
+        for i in range(n_image):
+            fid_fun_dual += -cvx.power(q2[k,i],2)/4 \
+                - cvx.max_elemwise(q2[k,i]*fl[k,i],q2[k,i]*fu[k,i])
     
     obj = cvx.Maximize(
-        cvx.vec(q3).T*cvx.vec(fl)
-        -cvx.vec(q4).T*cvx.vec(fu)
-        - cvx.sum_entries(q0)
+        fid_fun_dual - cvx.sum_entries(q0)
     )
 
     div_op = sparse_div_op(imagedims)
 
     constraints = []
-    for i in range(n_image):
-        for k in range(l_labels):
-            constraints.append(0 <= q3[k,i])
-            constraints.append(q3[k,i] <= 1)
-            constraints.append(0 <= q4[k,i])
-            constraints.append(q4[k,i] <= 1)
-            constraints.append(q4[k,i] - q3[k,i] - q2[k,i] == 0)
     for i in range(n_image):
         constraints.append(sum(cvx.sum_squares(p[k][:,i]) for k in range(l_shm)) <= lbd**2)
 
