@@ -227,11 +227,10 @@ class Experiment(object):
             pickle.dump(self.pd_result, open(pd_result_file, 'wb'))
             pickle.dump(self.details, open(details_file, 'wb'))
 
-        # FIXME: hacky special treatment for sh_w_tvw
-        if self.model_name == "sh_w_tvw":
+        try:
             self.upd = self.pd_result[0]['u'].copy()
-        else:
-            self.upd = self.pd_result[0].copy()
+        except KeyError:
+            self.upd = self.pd_result[0]['u1'].copy()
 
         self.postprocessing()
 

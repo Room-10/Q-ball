@@ -5,6 +5,10 @@ __global__ void DualKernel1(KERNEL_PARAMS)
      * pkp1 = pk + sigma*pkp1
      */
 
+    SUBVAR_u1bark
+    SUBVAR_pk
+    SUBVAR_pkp1
+
     // global thread index
     int k = blockIdx.x*blockDim.x + threadIdx.x;
     int i = blockIdx.y*blockDim.y + threadIdx.y;
@@ -63,6 +67,18 @@ __global__ void DualKernel2(KERNEL_PARAMS)
      * pkp1 = proj(pkp1, lbd)
      * pk = pkp1
      */
+
+    SUBVAR_u1bark
+    SUBVAR_u2bark
+    SUBVAR_vbark
+    SUBVAR_pk
+    SUBVAR_pkp1
+    SUBVAR_q0k
+    SUBVAR_q0kp1
+    SUBVAR_q1k
+    SUBVAR_q1kp1
+    SUBVAR_q2k
+    SUBVAR_q2kp1
 
     // global thread index
     int k = blockIdx.x*blockDim.x + threadIdx.x;

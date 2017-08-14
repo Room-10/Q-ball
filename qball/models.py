@@ -8,7 +8,7 @@ from dipy.reconst.shm import QballBaseModel, CsaOdfModel
 class n_w_tvw_Model(CsaOdfModel):
     """ Implementation of Wasserstein-TV model from SSVM """
     def fit(self, *args, solver_params={}, sphere=None, **kwargs):
-        from qball.solvers.n_w_tvw.cuda import qball_regularization
+        from qball.solvers.n_w_tvw.pd import qball_regularization
         if sphere is None:
             b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
             sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
@@ -17,10 +17,9 @@ class n_w_tvw_Model(CsaOdfModel):
         pd_state, details = qball_regularization(f, self.gtab, **solver_params)
         self.solver_state = pd_state
         self.solver_details = details
-        l_labels = pd_state[0].shape[0]
-        imagedims = pd_state[0].shape[1:]
-        u = pd_state[0].reshape(l_labels, -1)
-        u = u.T.reshape(imagedims + (l_labels,))
+        u = pd_state[0]['u']
+        l_labels, imagedims = u.shape[0], u.shape[1:]
+        u = u.reshape(l_labels, -1).T.reshape(imagedims + (l_labels,))
         return _TrivialOdfFit(u, sphere)
 
 class _TrivialOdfFit(OdfFit):
@@ -84,7 +83,7 @@ class _SH_HardiQballBaseModel(QballBaseModel):
             sampling_matrix=self.B, model_matrix=Minv, **self.solver_params)
         self.solver_state = pd_state
         self.solver_details = details
-        sh_coef = pd_state[2].T.reshape(data.shape[:-1]+(self.B.shape[1],))
+        sh_coef = pd_state[0]['v'].T.reshape(data.shape[:-1]+(self.B.shape[1],))
         sh_coef[..., 0] = self._n0_const
         return sh_coef
 

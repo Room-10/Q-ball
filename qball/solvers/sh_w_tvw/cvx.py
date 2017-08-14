@@ -1,5 +1,6 @@
 
 from qball.tools import normalize_odf
+from qball.tools.blocks import BlockVar
 from qball.tools.cvx import cvxVariable, sparse_div_op, cvxOp
 from qball.sphere import load_sphere
 
@@ -12,12 +13,30 @@ def qball_regularization(f, gtab, sampling_matrix, lbd=10.0):
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 
+    imagedims = f.shape[:-1]
+    n_image = np.prod(imagedims)
+    d_image = len(imagedims)
+    s_manifold = 2
     l_labels = b_sph.mdims['l_labels']
     m_gradients = b_sph.mdims['m_gradients']
-    assert(f.shape[0] == l_labels)
-    imagedims = f.shape[1:]
-    d_image = len(imagedims)
-    n_image = np.prod(imagedims)
+    assert(f.shape[-1] == l_labels)
+
+    f_flat = f.reshape(-1, l_labels).T
+    f = np.array(f_flat.reshape((l_labels,) + imagedims), order='C')
+    normalize_odf(f, b_sph.b)
+    f_flat = f.reshape(l_labels, n_image)
+
+    Y = np.zeros(sampling_matrix.shape, order='C')
+    Y[:] = sampling_matrix
+    l_shm = Y.shape[1]
+
+    logging.info("Solving ({l_labels} labels, m={m}; img: {imagedims}; " \
+                 "lambda={lbd:.3g}) using CVX...".format(
+        lbd=lbd,
+        m=m_gradients,
+        l_labels=l_labels,
+        imagedims="x".join(map(str,imagedims)),
+    ))
 
     p  = cvxVariable(l_labels, d_image, n_image)
     g  = cvxVariable(n_image, m_gradients, 2, d_image)
@@ -25,13 +44,6 @@ def qball_regularization(f, gtab, sampling_matrix, lbd=10.0):
     q1 = cvxVariable(l_labels, n_image)
     p0 = cvxVariable(l_labels, n_image)
     g0 = cvxVariable(n_image, m_gradients, 2)
-
-    Y = np.zeros(sampling_matrix.shape, order='C')
-    Y[:] = sampling_matrix
-    l_shm = Y.shape[1]
-
-    normalize_odf(f, b_sph.b)
-    f_flat = f.reshape(l_labels, n_image)
 
     obj = cvx.Maximize(
         - cvx.vec(f_flat).T*cvx.vec(cvx.diag(b_sph.b)*p0)
@@ -81,47 +93,54 @@ def qball_regularization(f, gtab, sampling_matrix, lbd=10.0):
     prob = cvx.Problem(obj, constraints)
     prob.solve(verbose=False)
 
-    pk = np.zeros((l_labels, d_image, n_image), order='C')
+    # Store result in block variables
+    x = BlockVar(
+        ('u', (l_labels,) + imagedims),
+        ('v', (l_shm, n_image)),
+        ('w', (n_image, m_gradients, s_manifold, d_image)),
+        ('w0', (n_image, m_gradients, s_manifold))
+    )
+
+    y = BlockVar(
+        ('p', (l_labels, d_image, n_image)),
+        ('g', (n_image, m_gradients, s_manifold, d_image)),
+        ('q0', (n_image,)),
+        ('q1', (l_labels, n_image)),
+        ('p0', (l_labels, n_image)),
+        ('g0', (n_image, m_gradients, s_manifold))
+    )
+
     for k in range(l_labels):
-        pk[k,:] = p[k].value
-    gk = np.zeros((n_image, m_gradients, 2, d_image), order='C')
+        y['p'][k,:] = p[k].value
+
     for i in range(n_image):
         for j in range(m_gradients):
-            gk[i,j,:,:] = g[i][j].value
-    q0k = np.zeros(n_image)
-    q0k[:] = q0.value.ravel()
-    q1k = np.zeros((l_labels, n_image), order='C')
-    q1k[:,:] = q1.value
-    p0k = np.zeros((l_labels, n_image), order='C')
-    p0k[:,:] = p0.value
-    g0k = np.zeros((n_image, m_gradients, 2), order='C')
-    for i in range(n_image):
-        g0k[i,:,:] = g0[i].value
+            y['g'][i,j,:,:] = g[i][j].value
 
-    vk = np.zeros((l_shm, n_image), order='C')
+    y['q0'][:] = q0.value.ravel()
+    y['q1'][:,:] = q1.value
+    y['p0'][:,:] = p0.value
+
+    for i in range(n_image):
+        y['g0'][i,:,:] = g0[i].value
+
     for k in range(l_shm):
         for i in range(n_image):
-            vk[k,i] = -v_constr[k*n_image+i].dual_value
+            x['v'][k,i] = -v_constr[k*n_image+i].dual_value
 
-    uk = np.zeros((l_labels, n_image), order='C')
+    u_flat = x['u'].reshape((l_labels, n_image))
     for k in range(l_labels):
         for i in range(n_image):
-            uk[k,i] = u_constr[k*n_image+i].dual_value
-    uk = uk.reshape((l_labels,) + imagedims)
+            u_flat[k,i] = u_constr[k*n_image+i].dual_value
 
-    wk = np.zeros((n_image, m_gradients, 2, d_image), order='C')
     for j in range(m_gradients):
         for i in range(n_image):
             for t in range(d_image):
-                wk[i,j,:,t] = w_constr[(j*n_image + i)*d_image + t].dual_value.ravel()
+                x['w'][i,j,:,t] = w_constr[(j*n_image + i)*d_image + t].dual_value.ravel()
 
-    w0k = np.zeros((n_image, m_gradients, 2), order='C')
     for j in range(m_gradients):
         for i in range(n_image):
-            w0k[i,j,:] = w0_constr[j*n_image + i].dual_value.ravel()
+            x['w0'][i,j,:] = w0_constr[j*n_image + i].dual_value.ravel()
 
     logging.debug("{}: objd = {: 9.6g}".format(prob.status, prob.value))
-    return (uk, vk, wk, w0k, pk, gk, q0k, q1k, p0k, g0k), {
-        'objp': prob.value,
-        'status': prob.status
-    }
+    return (x,y), { 'objp': prob.value, 'status': prob.status }

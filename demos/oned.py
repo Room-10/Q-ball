@@ -25,57 +25,57 @@ fit_params = {
             'term_maxiter': 100000,
             'granularity': 5000,
             'step_factor': 0.0001,
-            'step_bound': 1.3,
+            'step_bound': 1.2, # 0.993
             'dataterm': "W1",
             'use_gpu': True
         },
     },
     'sh_w_tvw': {
-        'solver_engine': 'cuda',
+        'solver_engine': 'pd',
         'solver_params': {
             'lbd': 10.0,
             'term_relgap': 1e-05,
             'term_maxiter': 100000,
             'granularity': 5000,
             'step_factor': 0.001,
-            'step_bound': 0.08,
+            'step_bound': 0.08, # 0.0651
             'dataterm': "W1",
             'use_gpu': True
         },
     },
     'sh_l_tvc': {
-        'solver_engine': 'cuda',
+        'solver_engine': 'pd',
         'solver_params': {
             'lbd': 5.0,
             'term_relgap': 1e-05,
             'term_maxiter': 100000,
             'granularity': 10000,
             'step_factor': 0.1,
-            'step_bound': 0.0014,
+            'step_bound': 0.0013, # 0.00104
             'use_gpu': True
         },
     },
     'sh_l_tvo': {
-        'solver_engine': 'cuda',
+        'solver_engine': 'pd',
         'solver_params': {
-            'lbd': 5.0,
+            'lbd': 1.0,
             'term_relgap': 1e-05,
             'term_maxiter': 100000,
             'granularity': 10000,
             'step_factor': 0.29,
-            'step_bound': 0.0014,
+            'step_bound': 0.0014, # 0.00105
             'use_gpu': True
         },
     },
     'sh_l_tvw': {
-        'solver_engine': 'cuda',
+        'solver_engine': 'pd',
         'solver_params': {
             'lbd': 1.0,
             'term_relgap': 1e-05,
             'term_maxiter': 150000,
             'granularity': 5000,
             'step_factor': 0.01,
-            'step_bound': 0.0014,
+            'step_bound': 0.0014, # 0.00105
             'use_gpu': True
         },
     },

@@ -1,6 +1,6 @@
 
 from qball.sphere import load_sphere
-from qball.tools import normalize_odf, truncate
+from qball.tools import truncate
 from qball.tools.diff import staggered_diff_avgskips
 from qball.tools.blocks import block_normest
 import qball.util as util
@@ -164,19 +164,19 @@ class PDHGModel(object):
 class PDHGModelHARDI(PDHGModel):
     "Base class for PDHG solvers for HARDI reconstruction."
 
-    def __init__(self, f, gtab, lbd=10.0):
+    def __init__(self, data, gtab, lbd=10.0):
         PDHGModel.__init__(self)
         b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
         b_sph = load_sphere(vecs=b_vecs)
 
-        imagedims = f.shape[:-1]
+        imagedims = data.shape[:-1]
         n_image = np.prod(imagedims)
         d_image = len(imagedims)
         l_labels = b_sph.mdims['l_labels']
         s_manifold = b_sph.mdims['s_manifold']
         m_gradients = b_sph.mdims['m_gradients']
         r_points = b_sph.mdims['r_points']
-        assert(f.shape[-1] == l_labels)
+        assert(data.shape[-1] == l_labels)
 
         self.extravars['b_sph'] = b_sph
 
@@ -197,9 +197,10 @@ class PDHGModelHARDI(PDHGModel):
         c['d_image'] = d_image
         c['r_points'] = r_points
 
-        f_flat = f.reshape(-1, l_labels).T
-        c['f'] = np.array(f_flat.reshape((l_labels,) + imagedims), order='C')
-        normalize_odf(c['f'], c['b'])
+        c['f'] = np.zeros((l_labels, n_image), order='C')
+        c['f'][:] = np.log(-np.log(data)).reshape(-1, l_labels).T
+        f_mean = np.einsum('ki,k->i', c['f'], c['b'])/(4*np.pi)
+        c['f'] -= f_mean
 
         skips = (1,)
         for d in reversed(imagedims[1:]):

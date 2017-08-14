@@ -1,4 +1,5 @@
 
+from qball.tools import normalize_odf, apply_PB, apply_PB0
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import project_gradients, norms_spectral, norms_nuclear
 from qball.tools.diff import gradient, divergence
@@ -6,7 +7,6 @@ from qball.solvers import PDHGModelHARDI
 
 import numpy as np
 from numpy.linalg import norm
-from numba import jit
 
 import logging
 
@@ -32,7 +32,10 @@ class MyPDHGModel(PDHGModelHARDI):
         s_manifold = c['s_manifold']
         m_gradients = c['m_gradients']
         r_points = c['r_points']
-        b_sph = e['b_sph']
+
+        f_flat = f.reshape(-1, l_labels).T
+        c['f'] = np.array(f_flat.reshape((l_labels,) + imagedims), order='C')
+        normalize_odf(c['f'], c['b'])
 
         c['Y'] = np.zeros(sampling_matrix.shape, order='C')
         c['Y'][:] = sampling_matrix
@@ -64,13 +67,6 @@ class MyPDHGModel(PDHGModelHARDI):
             resource_stream('qball.solvers.sh_w_tvw', 'cuda_primal.cu'),
             resource_stream('qball.solvers.sh_w_tvw', 'cuda_dual.cu'),
         ]
-
-        if c['dataterm'] == "quadratic":
-            e['dataterm_factor'] = 1.0/(1.0 + tau*b_sph.b)
-        elif c['dataterm'] == "W1":
-            e['dataterm_factor'] = np.ones((l_labels,))
-        else:
-            raise Exception("Dataterm '%s' not supported!" % dataterm)
 
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 
@@ -134,22 +130,16 @@ class MyPDHGModel(PDHGModelHARDI):
 
         obj_p = result + c['lbd'] * e['g_norms'].sum()
 
-        if c['dataterm'] == "quadratic":
-            # infeas_p = |diag(b) Du - P'B'w| + |b'u - 1| + |Yv - u| + |max(0,-u)|
-            infeas_p = norm(pgrad.ravel(), ord=np.inf) \
-                + norm(c['b_precond']*(q0grad.ravel() - 1.0), ord=np.inf) \
-                + norm(q1grad.ravel(), ord=np.inf) \
-                + norm(np.fmax(0.0, -u.ravel()), ord=np.inf)
-        elif c['dataterm'] == "W1":
-            # infeas_p = |diag(b) Du - P'B'w| + |diag(b) (u-f) - P'B'w0|
-            #          + |b'u - 1| + |Yv - u| + |max(0,-u)|
+        # infeas_p = |diag(b) Du - P'B'w| + |b'u - 1| + |Yv - u| + |max(0,-u)|
+        infeas_p = norm(pgrad.ravel(), ord=np.inf) \
+                 + norm(q0grad.ravel() - c['b_precond'], ord=np.inf) \
+                 + norm(q1grad.ravel(), ord=np.inf) \
+                 + norm(np.fmax(0.0, -u.ravel()), ord=np.inf)
+        if c['dataterm'] == "W1":
+            # infeas_p += |diag(b) (u-f) - P'B'w0|
             f_flat = c['f'].reshape(c['f'].shape[0], -1)
             p0tmp = p0grad - np.einsum('k,ki->ki', c['b'], f_flat)
-            infeas_p = norm(pgrad.ravel(), ord=np.inf) \
-                + norm(p0tmp.ravel(), ord=np.inf) \
-                + norm(c['b_precond']*(q0grad.ravel() - 1.0), ord=np.inf) \
-                + norm(q1grad.ravel(), ord=np.inf) \
-                + norm(np.fmax(0.0, -u.ravel()), ord=np.inf)
+            infeas_p += norm(p0tmp.ravel(), ord=np.inf)
 
         return obj_p, infeas_p
 
@@ -176,14 +166,13 @@ class MyPDHGModel(PDHGModelHARDI):
             # obj_d = -\sum_i q0_i - <f,p0>_b
             f_flat = c['f'].reshape(l_labels, -1)
             result = -np.einsum('ki,ki->', f_flat,
-                np.einsum('k,ki->ki', c['b'], p0)
-            )
+                np.einsum('k,ki->ki', c['b'], p0))
 
         obj_d = -np.sum(q0)*c['b_precond'] + result
 
+        norms_spectral(g, e['g_norms'])
         if c['dataterm'] == "quadratic":
             # infeas_d = |Y'q1| + |Ag - BPp| + |max(0, |g| - lbd)|
-            norms_spectral(g, e['g_norms'])
             infeas_d = norm(vgrad.ravel(), ord=np.inf) \
                     + norm(wgrad.ravel(), ord=np.inf) \
                     + norm(np.fmax(0, e['g_norms'] - c['lbd']), ord=np.inf)
@@ -192,7 +181,6 @@ class MyPDHGModel(PDHGModelHARDI):
             #          + |max(0, |g| - lbd)| + |max(0, |g0| - 1.0)|
             #          + |max(0, -ugrad)|
             g0_norms = e['g_norms'].copy()
-            norms_spectral(g, e['g_norms'])
             norms_spectral(g0[:,:,:,np.newaxis], g0_norms)
             infeas_d = norm(vgrad.ravel(), ord=np.inf) \
                     + norm(wgrad.ravel(), ord=np.inf) \
@@ -227,7 +215,7 @@ class MyPDHGModel(PDHGModelHARDI):
         gradient(pgrad, u, c['b'], c['avgskips'])
 
         # pgrad_t^i += - P^j' B^j' w_t^ij
-        _apply_PB(pgrad, c['P'], c['B'], w)
+        apply_PB(pgrad, c['P'], c['B'], w)
 
         # ggrad^ij = A^j' w^ij
         np.einsum('jlm,ijlt->ijmt', c['A'], w, out=ggrad)
@@ -244,7 +232,7 @@ class MyPDHGModel(PDHGModelHARDI):
             # p0grad = diag(b) u
             np.einsum('k,ki->ki', c['b'], u.reshape(l_labels, -1), out=p0grad)
             # p0grad^i += - P^j' B^j' w0^ij
-            _apply_PB0(p0grad, c['P'], c['B'], w0)
+            apply_PB0(p0grad, c['P'], c['B'], w0)
             # g0grad^ij += A^j' w0^ij
             np.einsum('jlm,ijl->ijm', c['A'], w0, out=g0grad)
 
@@ -300,9 +288,9 @@ class MyPDHGModel(PDHGModelHARDI):
     def prox_primal(self, x):
         u = x['u']
         c = self.constvars
-        e = self.extravars
 
-        u[:] = np.einsum('k,k...->k...', e['dataterm_factor'], u)
+        if c['dataterm'] == "quadratic":
+            u[:] = np.einsum('k,k...->k...', 1.0/(1.0 + c['tau']*c['b']), u)
         u[:] = np.fmax(0.0, u)
         u[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
@@ -316,28 +304,3 @@ class MyPDHGModel(PDHGModelHARDI):
         q0 -= c['sigma']*c['b_precond']
         p0 -= c['sigma']*np.einsum('k,ki->ki', c['b'], f_flat)
         project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])
-
-@jit
-def _apply_PB(pgrad, P, B, w):
-    """
-    # TODO: advanced indexing without creating a copy on the lhs. possible??
-    pgrad[b_sph.P] -= np.einsum('jlm,ijlt->jmti', b_sph.B, w)
-    """
-    for i in range(w.shape[0]):
-        for j in range(w.shape[1]):
-            for l in range(w.shape[2]):
-                for m in range(B.shape[2]):
-                    for t in range(w.shape[3]):
-                        pgrad[P[j,m],t,i] -= B[j,l,m] * w[i,j,l,t]
-
-@jit
-def _apply_PB0(p0grad, P, B, w0):
-    """
-    # TODO: advanced indexing without creating a copy on the lhs. possible??
-    p0grad[b_sph.P] -= np.einsum('jlm,ijl->jmi', b_sph.B, w0)
-    """
-    for i in range(w0.shape[0]):
-        for j in range(w0.shape[1]):
-            for l in range(w0.shape[2]):
-                for m in range(B.shape[2]):
-                    p0grad[P[j,m],i] -= B[j,l,m] * w0[i,j,l]

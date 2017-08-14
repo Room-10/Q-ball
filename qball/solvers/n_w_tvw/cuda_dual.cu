@@ -19,6 +19,18 @@ __global__ void DualKernel1(KERNEL_PARAMS)
      * g0kp1 = g0k + sigma*g0kp1
      */
 
+    SUBVAR_ubark
+    SUBVAR_wbark
+    SUBVAR_w0bark
+    SUBVAR_gk
+    SUBVAR_gkp1
+    SUBVAR_pkp1
+    SUBVAR_qk
+    SUBVAR_qkp1
+    SUBVAR_p0kp1
+    SUBVAR_g0k
+    SUBVAR_g0kp1
+
     // global thread index
     int _mj = blockIdx.x*blockDim.x + threadIdx.x;
     int i = blockIdx.y*blockDim.y + threadIdx.y;
@@ -117,6 +129,12 @@ __global__ void DualKernel2(KERNEL_PARAMS)
      * p0k = p0kp1
      */
 
+    SUBVAR_ubark
+    SUBVAR_pk
+    SUBVAR_pkp1
+    SUBVAR_p0k
+    SUBVAR_p0kp1
+
     // global thread index
     int k = blockIdx.x*blockDim.x + threadIdx.x;
     int i = blockIdx.y*blockDim.y + threadIdx.y;
@@ -180,6 +198,11 @@ __global__ void DualKernel3(KERNEL_PARAMS)
      * g0kp1 = proj(g0kp1, 1.0)
      * g0k = g0kp1
      */
+
+    SUBVAR_gk
+    SUBVAR_gkp1
+    SUBVAR_g0k
+    SUBVAR_g0kp1
 
 #if (d_image <= s_manifold)
 // A := gij, a (d_image x s_manifold)-matrix

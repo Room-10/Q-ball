@@ -5,6 +5,9 @@ __global__ void PrimalKernel1(KERNEL_PARAMS)
      * ubark += diag(b) D' pkp1 (D' = -div with Dirichlet boundary)
      */
 
+    SUBVAR_ubark
+    SUBVAR_pkp1
+
     // global thread index
     int k = blockIdx.x*blockDim.x + threadIdx.x;
 
@@ -56,6 +59,17 @@ __global__ void PrimalKernel2(KERNEL_PARAMS)
      * w0bark = w0k - tau*w0bark
      * w0bark, w0k = w0bark + theta*(w0bark - w0k), w0bark
      */
+
+    SUBVAR_wk
+    SUBVAR_wbark
+    SUBVAR_wkp1
+    SUBVAR_w0k
+    SUBVAR_w0bark
+    SUBVAR_w0kp1
+    SUBVAR_pkp1
+    SUBVAR_gkp1
+    SUBVAR_p0kp1
+    SUBVAR_g0kp1
 
     // global thread index
     int _lj = blockIdx.x*blockDim.x + threadIdx.x;
@@ -127,6 +141,12 @@ __global__ void PrimalKernel3(KERNEL_PARAMS)
      * ubark[uconstrloc] = constraint_u[uconstrloc]
      * ubark, uk = ubark + theta*(ubark - uk), ubark
      */
+
+    SUBVAR_uk
+    SUBVAR_ubark
+    SUBVAR_ukp1
+    SUBVAR_qkp1
+    SUBVAR_p0kp1
 
     // global thread index
     int i = blockIdx.x*blockDim.x + threadIdx.x;

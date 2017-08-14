@@ -2,6 +2,8 @@
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 
+from numba import jit
+
 def truncate(x, n):
     k = -int(np.floor(np.log10(abs(x))))
     # Example: x = 0.006142 => k = 3 / x = 2341.2 => k = -3
@@ -56,3 +58,28 @@ def plot_mesh3(ax, vecs, tris):
     )
     #for k in range(vecs.shape[1]):
     #    ax.text(1.1*vecs[0,k], 1.1*vecs[1,k], 1.1*vecs[2,k], str(k))
+
+@jit
+def apply_PB(pgrad, P, B, w):
+    """
+    # TODO: advanced indexing without creating a copy on the lhs. possible??
+    pgrad[b_sph.P] -= np.einsum('jlm,ijlt->jmti', b_sph.B, w)
+    """
+    for i in range(w.shape[0]):
+        for j in range(w.shape[1]):
+            for l in range(w.shape[2]):
+                for m in range(B.shape[2]):
+                    for t in range(w.shape[3]):
+                        pgrad[P[j,m],t,i] -= B[j,l,m] * w[i,j,l,t]
+
+@jit
+def apply_PB0(p0grad, P, B, w0):
+    """
+    # TODO: advanced indexing without creating a copy on the lhs. possible??
+    p0grad[b_sph.P] -= np.einsum('jlm,ijl->jmi', b_sph.B, w0)
+    """
+    for i in range(w0.shape[0]):
+        for j in range(w0.shape[1]):
+            for l in range(w0.shape[2]):
+                for m in range(B.shape[2]):
+                    p0grad[P[j,m],i] -= B[j,l,m] * w0[i,j,l]
