@@ -48,9 +48,16 @@ devel packages) and gcc-c++.
 Run
 ---
 
-Run the scripts in the `demos` subdirectory, e.g.,
+Run the script `demo.py` without arguments to show available experiments and models:
 
-    python demos/cross.py
+    python demo.py
+
+After that, specify the experiment and model you want to test:
+
+    python demo.py cross sh_l_tvw
+
+All logs, plots, parameters, results etc. are automatically stored in subdirectories
+of the `results` directory.
 
 Outlook
 -------

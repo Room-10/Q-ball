@@ -71,7 +71,7 @@ class PDHGModel(object):
         pass
 
     def solve(self, continue_at=None, step_bound=None, step_factor=1.0,
-                    term_relgap=1e-7, term_infeas=None, term_maxiter=20000,
+                    term_relgap=1e-5, term_infeas=None, term_maxiter=int(1e7),
                     granularity=5000, use_gpu=True):
         i = self.itervars
         c = self.constvars
@@ -164,7 +164,7 @@ class PDHGModel(object):
 class PDHGModelHARDI(PDHGModel):
     "Base class for PDHG solvers for HARDI reconstruction."
 
-    def __init__(self, data, gtab, lbd=10.0):
+    def __init__(self, data, gtab, lbd=1.0):
         PDHGModel.__init__(self)
         b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
         b_sph = load_sphere(vecs=b_vecs)
