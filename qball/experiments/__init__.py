@@ -32,12 +32,16 @@ class Experiment(object):
                             help="Activate batch processing (no plot).")
         parser.add_argument('--cvx', action="store_true", default=False,
                             help="Use CVX as solver engine.")
+        parser.add_argument('--params', metavar='SOLVER_PARAMS',
+                            default='', type=str,
+                            help="Params to be passed to the solver.")
         parsed_args = parser.parse_args(args)
         self.model_name = parsed_args.model
         if parsed_args.output == '':
             self.output_dir = output_dir_name("%s-%s" % (self.name, self.model_name))
         else:
             self.output_dir = parsed_args.output
+        self.user_params = eval("dict(%s)" % parsed_args.params)
         self.cvx = parsed_args.cvx
         self.resume = parsed_args.resume
         self.interactive = not parsed_args.batch
@@ -104,6 +108,7 @@ class QBallExperiment(Experiment):
             self.params['fit']['solver_params'].update(
                 self.pd_solver_params[self.model_name]
             )
+        self.params['fit']['solver_params'].update(self.user_params)
         self.params['base'] = {
             'sh_order': 6,
             'assume_normed': True
