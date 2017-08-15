@@ -2,7 +2,7 @@
 from qball.tools import normalize_odf, apply_PB, apply_PB0
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import project_gradients, norms_spectral, norms_nuclear
-from qball.tools.diff import gradient, divergence
+from qball.tools.diff import gradient, divergence, gradient_precond, divergence_precond
 from qball.solvers import PDHGModelHARDI
 
 import numpy as np
@@ -191,6 +191,105 @@ class MyPDHGModel(PDHGModelHARDI):
 
         return obj_d, infeas_d
 
+    def precond(self, x, y):
+        u, v, w, w0 = x.vars()
+        p, g, q0, q1, p0, g0 = y.vars()
+        c = self.constvars
+        x[:] = 0.0
+        y[:] = 0.0
+
+        # p += diag(b) D u (D is the gradient on a staggered grid)
+        gradient_precond(p, u, c['b'], c['avgskips'])
+
+        # p_t^i += -P^j' B^j' w_t^ij
+        for t in range(p.shape[1]):
+            for i in range(p.shape[2]):
+                for j in range(c['B'].shape[0]):
+                    for l in range(c['B'].shape[1]):
+                        for m in range(c['B'].shape[2]):
+                            p[c['P'][j,m],t,i] += np.abs(c['B'][j,l,m])
+
+        # g^ij = A^j' w^ij
+        for i in range(g.shape[0]):
+            for j in range(g.shape[1]):
+                for m in range(g.shape[2]):
+                    for t in range(g.shape[3]):
+                        for l in range(c['A'].shape[1]):
+                            g[i,j,m,t] += np.abs(c['A'][j,l,m])
+
+        # q0 = b'u
+        for i in range(q0.shape[0]):
+            for k in range(c['b'].shape[0]):
+                q0[i] += np.abs(c['b_precond']*c['b'][k])
+
+        # q1 = Yv - u
+        for k in range(q1.shape[0]):
+            for i in range(q1.shape[1]):
+                q1[k,i] += 1.0
+                for m in range(c['Y'].shape[1]):
+                    q1[k,i] += np.abs(c['Y'][k,m])
+
+        if c['dataterm'] == "W1":
+            # p0 = diag(b) u
+            # p0^i += - P^j' B^j' w0^ij
+            for i in range(p0.shape[1]):
+                for k in range(p0.shape[0]):
+                    p0[k,i] += np.abs(c['b'][k])
+                for j in range(c['B'].shape[0]):
+                    for l in range(c['B'].shape[1]):
+                        for m in range(c['B'].shape[2]):
+                            p0[c['P'][j,m],i] += np.abs(c['B'][j,l,m])
+
+            # g0^ij += A^j' w0^ij
+            for i in range(g0.shape[0]):
+                for j in range(g0.shape[1]):
+                    for m in range(g0.shape[2]):
+                        for l in range(c['A'].shape[1]):
+                            g0[i,j,m] += np.abs(c['A'][j,l,m])
+
+        y[:] = 1.0/y[:]
+
+        # u = b q0' - q1
+        for k in range(u.shape[0]):
+            for i in range(u.shape[1]):
+                u[k,i] += np.abs(c['b_precond']*c['b'][k])
+                u[k,i] += 1.0
+
+        if c['dataterm'] == "W1":
+            # u += diag(b) p0
+            for k in range(u.shape[0]):
+                for i in range(u.shape[1]):
+                    u[k,i] += np.abs(c['b'][k])
+
+            # w0^ij = A^j g0^ij - B^j P^j p0^i
+            for i in range(w0.shape[0]):
+                for j in range(w0.shape[1]):
+                    for l in range(w0.shape[2]):
+                        for m in range(c['A'].shape[2]):
+                            w0[i,j,l] += np.abs(c['A'][j,l,m])
+                            w0[i,j,l] += np.abs(c['B'][j,l,m])
+
+        # u += diag(b) D' p (where D' = -div with Dirichlet boundary)
+        divergence_precond(p, u, c['b'], c['avgskips'])
+
+        # v = Y'q1
+        for m in range(v.shape[0]):
+            for i in range(v.shape[1]):
+                for k in range(c['Y'].shape[0]):
+                    v[m,i] += np.abs(c['Y'][k,m])
+
+        # w^ij = A^j g^ij
+        # w_t^ij += -B^j P^j p_t^i
+        for i in range(w.shape[0]):
+            for j in range(w.shape[1]):
+                for l in range(w.shape[2]):
+                    for t in range(w.shape[3]):
+                        for m in range(c['A'].shape[2]):
+                            w[i,j,l,t] += np.abs(c['A'][j,l,m])
+                            w[i,j,l,t] += np.abs(c['B'][j,l,m])
+
+        x[:] = 1.0/x[:]
+
     def linop(self, x, ygrad):
         """ Apply the linear operator in the model to x.
 
@@ -221,7 +320,7 @@ class MyPDHGModel(PDHGModelHARDI):
         np.einsum('jlm,ijlt->ijmt', c['A'], w, out=ggrad)
 
         # q0grad = b'u
-        np.einsum('i,ij->j', c['b'], u.reshape(l_labels, n_image), out=q0grad)
+        np.einsum('k,ki->i', c['b'], u.reshape(l_labels, n_image), out=q0grad)
         q0grad *= c['b_precond']
 
         # q1grad = Yv - u
@@ -259,11 +358,7 @@ class MyPDHGModel(PDHGModelHARDI):
         np.einsum('k,i->ki', c['b'], c['b_precond']*q0, out=ugrad_flat)
         ugrad_flat -= q1
 
-        if c['dataterm'] == "quadratic":
-            # ugrad -= diag(b) f
-            f_flat = c['f'].reshape(l_labels, -1)
-            ugrad_flat -= np.einsum('k,ki->ki', c['b'], f_flat)
-        elif c['dataterm'] == "W1":
+        if c['dataterm'] == "W1":
             # ugrad += diag(b) p0
             ugrad_flat += np.einsum('k,ki->ki', c['b'], p0)
 
@@ -290,6 +385,11 @@ class MyPDHGModel(PDHGModelHARDI):
         c = self.constvars
 
         if c['dataterm'] == "quadratic":
+            f_flat = c['f'].reshape(c['f'].shape[0], -1)
+            if 'precond' in c:
+                u[:] += c['xtau']['u'][:]*np.einsum('k,ki->ki', c['b'], f_flat)
+            else:
+                u[:] += c['tau']*np.einsum('k,ki->ki', c['b'], f_flat)
             u[:] = np.einsum('k,k...->k...', 1.0/(1.0 + c['tau']*c['b']), u)
         u[:] = np.fmax(0.0, u)
         u[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
@@ -301,6 +401,13 @@ class MyPDHGModel(PDHGModelHARDI):
         f_flat = c['f'].reshape(c['f'].shape[0], -1)
 
         project_gradients(g, c['lbd'], e['g_norms'])
-        q0 -= c['sigma']*c['b_precond']
-        p0 -= c['sigma']*np.einsum('k,ki->ki', c['b'], f_flat)
-        project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])
+        if 'precond' in c:
+            q0 -= c['ysigma']['q0'][:]*c['b_precond']
+        else:
+            q0 -= c['sigma']*c['b_precond']
+        if c['dataterm'] == "W1":
+            if 'precond' in c:
+                p0 -= c['ysigma']['p0'][:]*np.einsum('k,ki->ki', c['b'], f_flat)
+            else:
+                p0 -= c['sigma']*np.einsum('k,ki->ki', c['b'], f_flat)
+            project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])

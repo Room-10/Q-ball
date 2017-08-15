@@ -29,7 +29,10 @@ class PDHGModel(object):
 
         # --- primals:
         self.linop_adjoint(i['xkp1'], i['ykp1'])
-        i['xkp1'][:] = i['xk'] - c['tau']*i['xkp1']
+        if 'precond' in c:
+            i['xkp1'][:] = i['xk'][:] - c['xtau'][:]*i['xkp1'][:]
+        else:
+            i['xkp1'][:] = i['xk'] - c['tau']*i['xkp1']
         # prox
         self.prox_primal(i['xkp1'])
         # overrelaxation
@@ -39,7 +42,10 @@ class PDHGModel(object):
 
         # --- duals:
         self.linop(i['xbark'], i['ykp1'])
-        i['ykp1'][:] = i['yk'] + c['sigma']*i['ykp1']
+        if 'precond' in c:
+            i['ykp1'][:] = i['yk'][:] + c['ysigma'][:]*i['ykp1'][:]
+        else:
+            i['ykp1'][:] = i['yk'] + c['sigma']*i['ykp1']
         # prox
         self.prox_dual(i['ykp1'])
         # update
@@ -72,7 +78,7 @@ class PDHGModel(object):
 
     def solve(self, continue_at=None, step_bound=None, step_factor=1.0,
                     term_relgap=1e-5, term_infeas=None, term_maxiter=int(1e7),
-                    granularity=5000, use_gpu=True):
+                    granularity=5000, use_gpu=True, precond=False):
         i = self.itervars
         c = self.constvars
 
@@ -89,21 +95,28 @@ class PDHGModel(object):
             term_infeas = term_relgap
 
         obj_p = obj_d = infeas_p = infeas_d = relgap = 0.
-
-        if step_bound is None:
-            logging.info("Estimating optimal step bound...")
-            op = lambda x,y: self.linop(x, y)
-            opadj = lambda x,y: self.linop_adjoint(x, y)
-            op_norm, itn = block_normest(i['xk'].copy(), i['yk'].copy(), op, opadj)
-            # round (floor) to 3 significant digits
-            bnd = truncate(1.0/op_norm**2, 3) # < 1/|K|^2
-        else:
-            bnd = step_bound
-        fact = step_factor # tau/sigma
-        c['sigma'] = np.sqrt(bnd/fact)
-        c['tau'] = bnd/c['sigma']
         c['theta'] = 1.0 # overrelaxation
-        logging.info("Step bounds: %f (%f | %f)" % (bnd, c['sigma'], c['tau']))
+
+        if precond:
+            c['precond'] = True
+            c['xtau'] = i['xk'].copy()
+            c['ysigma'] = i['yk'].copy()
+            logging.info("Determining diagonal preconditioners...")
+            self.precond(c['xtau'], c['ysigma'])
+        else:
+            if step_bound is None:
+                logging.info("Estimating optimal step bound...")
+                op = lambda x,y: self.linop(x, y)
+                opadj = lambda x,y: self.linop_adjoint(x, y)
+                op_norm, itn = block_normest(i['xk'].copy(), i['yk'].copy(), op, opadj)
+                # round (floor) to 3 significant digits
+                bnd = truncate(1.0/op_norm**2, 3) # < 1/|K|^2
+            else:
+                bnd = step_bound
+            fact = step_factor # tau/sigma
+            c['sigma'] = np.sqrt(bnd/fact)
+            c['tau'] = bnd/c['sigma']
+            logging.info("Step bounds: %f (%f | %f)" % (bnd, c['sigma'], c['tau']))
 
         if use_gpu:
             from qball.tools.cuda import iterate_on_gpu

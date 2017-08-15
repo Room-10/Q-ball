@@ -71,6 +71,11 @@ __global__ void PrimalKernel2(KERNEL_PARAMS)
     SUBVAR_p0kp1
     SUBVAR_g0kp1
 
+#ifdef precond
+    SUBVAR_wtau
+    SUBVAR_w0tau
+#endif
+
     // global thread index
     int _lj = blockIdx.x*blockDim.x + threadIdx.x;
     int i = blockIdx.y*blockDim.y + threadIdx.y;
@@ -101,7 +106,12 @@ __global__ void PrimalKernel2(KERNEL_PARAMS)
                     pkp1[P[j*r_points + mm]*nd_skip + t*n_image + i];
     }
 
+#ifdef precond
+    wkp1_tmp = wk[i*msd_skip + j*sd_skip + l*d_image + t]
+               - wtau[i*msd_skip + j*sd_skip + l*d_image + t]*wkp1_tmp;
+#else
     wkp1_tmp = wk[i*msd_skip + j*sd_skip + l*d_image + t] - tau*wkp1_tmp;
+#endif
 
     wbark[i*msd_skip + j*sd_skip + l*d_image + t] =
         (1 + theta)*wkp1_tmp - theta*wk[i*msd_skip + j*sd_skip + l*d_image + t];
@@ -121,7 +131,12 @@ __global__ void PrimalKernel2(KERNEL_PARAMS)
             wkp1_tmp -= B[j*sr_skip + l*r_points + mm] *
                         p0kp1[P[j*r_points + mm]*n_image + i];
         }
+#ifdef precond
+        wkp1_tmp = w0k[i*sm_skip + j*s_manifold + l]
+                   - w0tau[i*sm_skip + j*s_manifold + l]*wkp1_tmp;
+#else
         wkp1_tmp = w0k[i*sm_skip + j*s_manifold + l] - tau*wkp1_tmp;
+#endif
 
         w0bark[i*sm_skip + j*s_manifold + l] =
             (1 + theta)*wkp1_tmp - theta*w0k[i*sm_skip + j*s_manifold + l];
@@ -147,6 +162,10 @@ __global__ void PrimalKernel3(KERNEL_PARAMS)
     SUBVAR_q0kp1
     SUBVAR_q1kp1
     SUBVAR_p0kp1
+
+#ifdef precond
+    SUBVAR_utau
+#endif
 
     // global thread index
     int i = blockIdx.x*blockDim.x + threadIdx.x;
@@ -175,7 +194,13 @@ __global__ void PrimalKernel3(KERNEL_PARAMS)
 #elif 'W' == dataterm
         ukp1_tmp += b[k]*p0kp1[k*n_image + i];
 #endif
+#ifdef precond
+        ukp1_tmp = dataterm_factor*(
+            uk[k*n_image + i] - utau[k*n_image + i]*ukp1_tmp
+        );
+#else
         ukp1_tmp = dataterm_factor*(uk[k*n_image + i] - tau*ukp1_tmp);
+#endif
         ukp1_tmp = fmax(0.0,  ukp1_tmp);
     }
 
@@ -196,6 +221,10 @@ __global__ void PrimalKernel4(KERNEL_PARAMS)
     SUBVAR_vkp1
     SUBVAR_q1kp1
 
+#ifdef precond
+    SUBVAR_vtau
+#endif
+
     // global thread index
     int i = blockIdx.x*blockDim.x + threadIdx.x;
     int m = blockIdx.y*blockDim.y + threadIdx.y;
@@ -214,7 +243,11 @@ __global__ void PrimalKernel4(KERNEL_PARAMS)
         vkp1_tmp += Y[k*l_shm + m]*q1kp1[k*n_image + i];
     }
 
+#ifdef precond
+    vkp1_tmp = vk[m*n_image + i] - vtau[m*n_image + i]*vkp1_tmp;
+#else
     vkp1_tmp = vk[m*n_image + i] - tau*vkp1_tmp;
+#endif
 
     vbark[m*n_image + i] = (1 + theta)*vkp1_tmp - theta*vk[m*n_image + i];
     vk[m*n_image + i] = vkp1_tmp;

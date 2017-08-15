@@ -100,11 +100,22 @@ def prepare_vars(vars):
     signature = ""
     param_strings = []
     constvars = []
-    for name, val in vars['const']:
+    for i, (name, val) in enumerate(vars['const']):
+        if type(val) is BlockVar:
+            # Encode BlockVar description as preprocessor macros
+            for subvar in val:
+                subname = subvar['name'] + name[1:]
+                preamble += "#define SUBVAR_%s double *%s = &%s[%d];\n" \
+                                % (subname, subname, name, subvar['offset'])
+            # Discard BlockVar description and restrict to numpy array
+            val = val.data
+            vars['const'][i] = (name, val)
         if type(val) is str:
             preamble += "#define %s ('%s')\n" % (name, val)
         elif type(val) is int or type(val) is np.int64:
             preamble += "#define %s (%d)\n" % (name, val)
+        elif type(val) is bool:
+            preamble += "#define %s (%d)\n" % (name, 1 if val else 0)
         elif type(val) is float or type(val) is np.float64:
             signature += "d"
             param_strings.append("double %s" % name)

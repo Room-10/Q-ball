@@ -31,6 +31,12 @@ __global__ void DualKernel1(KERNEL_PARAMS)
     SUBVAR_g0k
     SUBVAR_g0kp1
 
+#ifdef precond
+    SUBVAR_gsigma
+    SUBVAR_q0sigma
+    SUBVAR_g0sigma
+#endif
+
     // global thread index
     int _mj = blockIdx.x*blockDim.x + threadIdx.x;
     int i = blockIdx.y*blockDim.y + threadIdx.y;
@@ -54,7 +60,11 @@ __global__ void DualKernel1(KERNEL_PARAMS)
         newval += A[j*ss_skip + ll*s_manifold + m] *
                     wbark[i*msd_skip + j*sd_skip + ll*d_image + t];
     }
+#ifdef precond
+    newval *= gsigma[i*msd_skip + j*sd_skip + m*d_image + t];
+#else
     newval *= sigma;
+#endif
     gkp1[i*msd_skip + j*sd_skip + m*d_image + t] =
         gk[i*msd_skip + j*sd_skip + m*d_image + t] + newval;
 
@@ -79,7 +89,11 @@ __global__ void DualKernel1(KERNEL_PARAMS)
             for(kk = 0; kk < l_labels; kk++) {
                 newval += b[kk]*ubark[kk*n_image + i];
             }
+#ifdef precond
+            newval = q0k[i] + q0sigma[i]*b_precond*(newval - 1.0);
+#else
             newval = q0k[i] + sigma*b_precond*(newval - 1.0);
+#endif
             q0kp1[i] = newval;
             q0k[i] = newval;
 
@@ -110,7 +124,11 @@ __global__ void DualKernel1(KERNEL_PARAMS)
             newval += A[j*ss_skip + ll*s_manifold + m] *
                         w0bark[i*sm_skip + j*s_manifold + ll];
         }
+#ifdef precond
+        newval *= g0sigma[i*sm_skip + j*s_manifold + m];
+#else
         newval *= sigma;
+#endif
         g0kp1[i*sm_skip + j*s_manifold + m] =
             g0k[i*sm_skip + j*s_manifold + m] + newval;
     }
@@ -141,6 +159,12 @@ __global__ void DualKernel2(KERNEL_PARAMS)
     SUBVAR_q1kp1
     SUBVAR_p0k
     SUBVAR_p0kp1
+
+#ifdef precond
+    SUBVAR_psigma
+    SUBVAR_q1sigma
+    SUBVAR_p0sigma
+#endif
 
     // global thread index
     int k = blockIdx.x*blockDim.x + threadIdx.x;
@@ -177,7 +201,12 @@ __global__ void DualKernel2(KERNEL_PARAMS)
         }
     }
 
+#ifdef precond
+    newval = pk[k*nd_skip + t*n_image + i]
+              + psigma[k*nd_skip + t*n_image + i]*newval;
+#else
     newval = pk[k*nd_skip + t*n_image + i] + sigma*newval;
+#endif
     pkp1[k*nd_skip + t*n_image + i] = newval;
     pk[k*nd_skip + t*n_image + i] = newval;
 
@@ -186,14 +215,22 @@ __global__ void DualKernel2(KERNEL_PARAMS)
         for(aa = 0; aa < l_shm; aa++) {
             newval += Y[k*l_shm + aa]*vbark[aa*n_image + i];
         }
+#ifdef precond
+        newval = q1k[k*n_image + i] + q1sigma[k*n_image + i]*newval;
+#else
         newval = q1k[k*n_image + i] + sigma*newval;
+#endif
         q1kp1[k*n_image + i] = newval;
         q1k[k*n_image + i] = newval;
 
 #if 'W' == dataterm
         newval = p0kp1[k*n_image + i];
         newval += b[k]*(ubark[k*n_image + i] - f[k*n_image + i]);
+#ifdef precond
+        newval = p0k[k*n_image + i] + p0sigma[k*n_image + i]*newval;
+#else
         newval = p0k[k*n_image + i] + sigma*newval;
+#endif
         p0kp1[k*n_image + i] = newval;
         p0k[k*n_image + i] = newval;
 #endif
