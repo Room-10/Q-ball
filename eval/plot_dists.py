@@ -25,6 +25,10 @@ for output_dir in sys.argv[1:]:
     dists_plot_file = os.path.join(output_dir, 'plot_dists.pdf')
     S_data_file = os.path.join(output_dir, 'S_data.np')
 
+    if not os.path.exists(dists_file):
+        print("No distance information available.")
+        continue
+
     dists_npz = np.load(open(dists_file, 'rb'))
     S_data = np.load(open(S_data_file, 'rb'))
     imagedims = S_data.shape[:-1]

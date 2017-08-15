@@ -9,7 +9,7 @@ class MyExperiment(QBallExperiment):
     name = "1d"
     pd_solver_params = {
         'n_w_tvw': {
-            'step_factor': 0.0001,
+            'step_factor': 0.0005,
             'step_bound': 1.2, # 0.993
         },
         'sh_w_tvw': {

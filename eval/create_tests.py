@@ -24,13 +24,8 @@ params = {
     'fit': {
         'solver_engine': 'pd',
         'solver_params': {
-            'lbd': 1.0,
-            'term_relgap': 1e-05,
-            'term_maxiter': 100000,
-            'granularity': 10000,
-            'step_factor': 0.29,
+            'step_factor': 0.01,
             'step_bound': 0.0014,
-            'use_gpu': True
         },
     },
 }

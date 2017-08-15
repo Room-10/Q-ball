@@ -4,11 +4,17 @@ import numpy as np
 
 def print_params(output_dir):
     params_file = os.path.join(output_dir, 'params.pickle')
+    if not os.path.exists(params_file):
+        print("No parameters set.")
+        return
     params = pickle.load(open(params_file, 'rb'))
     print(json.dumps(params, sort_keys=True, indent=4))
 
 def print_dists(output_dir):
     dists_file = os.path.join(output_dir, 'dists.npz')
+    if not os.path.exists(dists_file):
+        print("No distance information available.")
+        return
     dists = np.load(open(dists_file, 'rb'))
     noise_dists = {}
     res_dists = {}
@@ -33,10 +39,12 @@ if __name__ == "__main__":
     parser.add_argument('--dists', action="store_true", default=False)
     parsed_args = parser.parse_args()
 
-    for output_dir in parsed_args.basedirs:
-        print(output_dir)
-        if parsed_args.params:
+    for i,output_dir in enumerate(parsed_args.basedirs):
+        print("=> %s" % output_dir)
+        printall = not parsed_args.params and not parsed_args.dists
+        if printall or parsed_args.params:
             print_params(output_dir)
-        if parsed_args.dists:
+        if printall or parsed_args.dists:
             print_dists(output_dir)
-        print("")
+        if i+1 < len(parsed_args.basedirs):
+            print("")

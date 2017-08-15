@@ -1,37 +1,39 @@
 
 import sys, os, pickle, shutil
-
 import numpy as np
 
-import dipy.core.sphere
-from dipy.reconst.shm import CsaOdfModel
+from compute_dists import l2_dist, load_b_sph, reconst_f, compute_dists
 
 try:
     import qball
 except:
     import set_qball_path
-from qball.sphere import load_sphere
 from qball.tools import normalize_odf
 
 def lbd_key(lbd):
     return "%.4f" % lbd
 
-def l2_dist(f1, f2):
-    return np.sqrt(np.einsum('ki,ki->i', f1 - f2, f1 - f2))
-
 class LambdaOptimizer(object):
-    def __init__(self, basedir, experiment, dist=l2_dist,
+    def __init__(self, experiment, model, basedir=None, dist=l2_dist,
                  resume=False, redist=False, cvx=False):
-        self.basedir = basedir.rstrip("/")
-        self.dist = dist
         self.experiment = experiment
-        self.cvx = cvx
+        self.model = model
+        if basedir is not None:
+            self.basedir = basedir.rstrip("/")
+        else:
+            exp_args = [self.model, '--batch']
+            exp = self.experiment(exp_args)
+            exp.load_imagedata()
+            self.basedir = exp.output_dir
+        self.dist = dist
         self.resume = resume
         self.redist = redist
+        self.cvx = cvx
+
         self.result = None
         self.dists = {}
         self.fulldists = {}
-        self.load_data()
+        self.b_sph = load_b_sph(self.basedir)
 
     def run(self):
         # ----------------------------------------------------------------------
@@ -82,45 +84,18 @@ class LambdaOptimizer(object):
             lbd = lbd_r
         self.result = lbd
 
-    def load_data(self):
-        params_file = os.path.join(self.basedir, 'params.pickle')
-        gtab_file = os.path.join(self.basedir, 'gtab.pickle')
-        S_data_file = os.path.join(self.basedir, 'S_data.np')
-        S_data_orig_file = os.path.join(self.basedir, 'S_data_orig.np')
-
-        self.baseparams = pickle.load(open(params_file, 'rb'))
-        self.gtab = pickle.load(open(gtab_file, 'rb'))
-        self.S_data = np.load(open(S_data_file, 'rb'))
-        self.S_data_orig = np.load(open(S_data_orig_file, 'rb'))
-        self.reconst_f()
-
-    def reconst_f(self):
-        l_labels = np.sum(self.gtab.bvals > 0)
-        imagedims = self.S_data.shape[:-1]
-        b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
-        self.qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
-        self.b_sph = load_sphere(vecs=b_vecs.T)
-        basemodel = CsaOdfModel(self.gtab, **self.baseparams['base'])
-        fs = []
-        for S in [self.S_data, self.S_data_orig]:
-            f = basemodel.fit(S).odf(self.qball_sphere)
-            f = np.clip(f, 0, np.max(f, -1)[..., None])
-            f = np.array(f.reshape(-1, l_labels).T, order='C')
-            normalize_odf(f, self.b_sph.b)
-            fs.append(f)
-        self.f_noisy, self.f_gt = fs
-
     def compute(self, lbd):
-        output_dir = "%s-%s" % (self.basedir, lbd_key(lbd))
+        output_dir = self.basedir
+        if self.basedir[-len(self.model):] != self.model:
+            output_dir = "%s-%s" % (output_dir, self.model)
+        output_dir = "%s-%s" % (output_dir, lbd_key(lbd))
 
         if not os.path.exists(output_dir):
-            shutil.copytree(self.basedir, output_dir)
-            params = dict(self.baseparams)
-            params['fit']['solver_params']['lbd'] = lbd
-            params_file = os.path.join(output_dir, 'params.pickle')
-            pickle.dump(params, open(params_file, 'wb'))
+            shutil.copytree(self.basedir, output_dir,
+                            ignore=shutil.ignore_patterns("*.log","*.zip"))
 
-        exp_args = [self.baseparams['model'], '--output', output_dir, '--batch']
+        exp_args = [self.model, '--output', output_dir, '--batch']
+        exp_args += ['--params', 'lbd=%f' % lbd]
         if self.resume:
             exp_args.append('--resume')
         if self.cvx:
@@ -128,37 +103,23 @@ class LambdaOptimizer(object):
         exp = self.experiment(exp_args)
         exp.run()
 
-        l_labels = exp.upd.shape[-1]
-        f_lbd = np.array(exp.upd.reshape(-1, l_labels).T, order='C')
-        normalize_odf(f_lbd, self.b_sph.b)
-
-        dist_file = os.path.join(output_dir, 'dists.npz')
         distname = self.dist.__name__
-        distname_noise = 'noise_%s' % distname
-        if not os.path.exists(dist_file):
-            dist_npz = {}
-        else:
-            dist_npz = dict(np.load(open(dist_file, 'rb')))
+        dists_npz = {}
+        if lbd_key(0.0) in self.fulldists:
+            dists_npz['noise_%s' % distname] = self.fulldists[lbd_key(0.0)]
+
+        dists_npz = compute_dists(output_dir, self.dist, verbose=False,
+                                  precomputed=dists_npz, redist=self.redist)
 
         if lbd_key(0.0) not in self.fulldists:
-            if self.redist or distname_noise not in dist_npz:
-                d = self.dist(self.f_gt, self.f_noisy)
-                dist_npz[distname_noise] = d
-            d = dist_npz[distname_noise]
+            d = dists_npz['noise_%s' % distname]
             self.fulldists[lbd_key(0.0)] = d
             d_sum = np.sum(d)
             print("Noise: %.5f (min: %.5f, max: %.5f)" % (
                 d_sum, np.amin(d), np.amax(d)))
             self.dists[lbd_key(0.0)] = d_sum
 
-        if distname_noise not in dist_npz:
-            dist_npz[distname_noise] = self.fulldists[lbd_key(0.0)]
-
-        if self.redist or distname not in dist_npz:
-            dist_npz[distname] = self.dist(self.f_gt, f_lbd)
-
-        np.savez_compressed(dist_file, **dist_npz)
-        d = dist_npz[distname]
+        d = dists_npz[distname]
         self.fulldists[lbd_key(lbd)] = d
         d_sum = np.sum(d)
         print("%s: %.5f (min: %.5f, max: %.5f)" % (
@@ -167,9 +128,10 @@ class LambdaOptimizer(object):
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
-    parser = ArgumentParser(description="Optimize for regularization parameter.")
-    parser.add_argument('basedir', metavar='BASENAME', type=str)
-    parser.add_argument('demo', metavar='DEMO', type=str)
+    parser = ArgumentParser(description="Optimize regularization parameter.")
+    parser.add_argument('experiment', metavar='EXPERIMENT', type=str)
+    parser.add_argument('model', metavar='MODEL', type=str)
+    parser.add_argument('--basedir', metavar='BASENAME', type=str, default="")
     parser.add_argument('--resume', action="store_true", default=False)
     parser.add_argument('--redist', action="store_true", default=False,
                         help="Recalculate distances.")
@@ -178,14 +140,15 @@ if __name__ == "__main__":
     parsed_args = parser.parse_args()
 
     import importlib
-    exp = importlib.import_module("demos.%s" % parsed_args.demo)
-    opt = LambdaOptimizer(parsed_args.basedir, exp.MyExperiment,
-                          resume=parsed_args.resume, redist=parsed_args.redist,
-                          cvx=parsed_args.cvx)
+    exp = importlib.import_module("qball.experiments.%s" % parsed_args.experiment)
+
+    distfun = l2_dist
     if parsed_args.w1:
-        from qball.tools.w1dist import w1_dist as __w1_dist
-        def w1_dist(f1, f2):
-            return __w1_dist(f1, f2, opt.b_sph)
-        opt.dist = w1_dist
+        from qball.tools.w1dist import w1_dist
+        distfun = w1_dist
+    basedir = None if parsed_args.basedir == "" else parsed_args.basedir
+    opt = LambdaOptimizer(exp.MyExperiment, parsed_args.model, basedir=basedir,
+                          dist=distfun, resume=parsed_args.resume,
+                          redist=parsed_args.redist, cvx=parsed_args.cvx)
     opt.run()
     print(opt.result)

@@ -7,7 +7,7 @@ from dipy.reconst.shm import QballBaseModel, CsaOdfModel
 
 class n_w_tvw_Model(CsaOdfModel):
     """ Implementation of Wasserstein-TV model from SSVM """
-    def fit(self, *args, solver_params={}, sphere=None, **kwargs):
+    def fit(self, *args, solver_engine="pd", solver_params={}, sphere=None, **kwargs):
         from qball.solvers.n_w_tvw.pd import qball_regularization
         if sphere is None:
             b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
