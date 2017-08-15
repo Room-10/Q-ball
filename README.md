@@ -38,9 +38,7 @@ devel packages) and gcc-c++.
     pip install -r requirements.1.txt
 
     # include VTK7 from special location
-    cd env/lib/python3.5
-    echo "/opt/VTK-7.0.0/lib/python3.5/site-packages" > site-packages/vtk7.pth
-    cd ../../../
+    echo "/opt/VTK-7.0.0/lib/python3.5/site-packages" > env/lib/python3.5/site-packages/vtk7.pth
 
     # install mosek (you need a license!)
     pip install git+http://github.com/MOSEK/Mosek.pip
