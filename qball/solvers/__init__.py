@@ -198,7 +198,9 @@ class PDHGModelHARDI(PDHGModel):
         c['r_points'] = r_points
 
         c['f'] = np.zeros((l_labels, n_image), order='C')
-        c['f'][:] = np.log(-np.log(data)).reshape(-1, l_labels).T
+        data_clipped = np.clip(data, np.spacing(1), 1-np.spacing(1))
+        loglog_data = np.log(-np.log(data_clipped))
+        c['f'][:] = loglog_data.reshape(-1, l_labels).T
         f_mean = np.einsum('ki,k->i', c['f'], c['b'])/(4*np.pi)
         c['f'] -= f_mean
 

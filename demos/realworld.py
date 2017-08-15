@@ -20,62 +20,62 @@ fit_params = {
     'n_w_tvw': {
         'sphere': None,
         'solver_params': {
-            'lbd': 2.5,
+            'lbd': 1.5,
             'term_relgap': 1e-05,
             'term_maxiter': int(1e7),
             'granularity': 10000,
             'step_factor': 0.0001,
-            'step_bound': 1.3,
+            'step_bound': 1.27, # 0.992
             'dataterm': "W1",
             'use_gpu': True
         },
     },
     'sh_w_tvw': {
-        'solver_engine': 'cuda',
+        'solver_engine': 'pd',
         'solver_params': {
             'lbd': 0.8,
             'term_relgap': 1e-05,
             'term_maxiter': int(1e7),
             'granularity': 10000,
             'step_factor': 0.005,
-            'step_bound': 0.08,
+            'step_bound': 0.08, # 0.0655
             'dataterm': "W1",
             'use_gpu': True
         },
     },
     'sh_l_tvc': {
-        'solver_engine': 'cuda',
+        'solver_engine': 'pd',
         'solver_params': {
             'lbd': 1.0,
             'term_relgap': 1e-05,
             'term_maxiter': int(1e7),
             'granularity': 10000,
             'step_factor': 0.1,
-            'step_bound': 0.0014,
+            'step_bound': 0.0014, # 0.00113
             'use_gpu': True
         },
     },
     'sh_l_tvo': {
-        'solver_engine': 'cuda',
+        'solver_engine': 'pd',
         'solver_params': {
             'lbd': 1.0,
             'term_relgap': 1e-05,
             'term_maxiter': int(1e7),
             'granularity': 10000,
             'step_factor': 0.29,
-            'step_bound': 0.0014,
+            'step_bound': 0.0014, # 0.00114
             'use_gpu': True
         },
     },
     'sh_l_tvw': {
-        'solver_engine': 'cuda',
+        'solver_engine': 'pd',
         'solver_params': {
             'lbd': 1.0,
             'term_relgap': 1e-05,
             'term_maxiter': int(1e7),
             'granularity': 10000,
             'step_factor': 0.033,
-            'step_bound': 0.0014,
+            'step_bound': 0.0014, # 0.00114
             'use_gpu': True
         },
     },

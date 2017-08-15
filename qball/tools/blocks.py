@@ -2,7 +2,7 @@
 import numpy as np
 from numpy.linalg import norm
 
-def block_normest(x, y, op, opadj, tol=1.0e-6, maxits=1000):
+def block_normest(x, y, op, opadj, tol=1.0e-4, maxits=500):
     """ Estimate the spectral norm of the given linear operator op/opadj.
     """
     m, n = y.data.size, x.data.size
