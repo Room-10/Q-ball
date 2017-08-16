@@ -67,13 +67,11 @@ def add_log_file(logger, output_dir):
     log_file = os.path.join(output_dir, "{}-{}.log".format(
         datetime.now().strftime('%Y%m%d%H%M%S'), logger.name
     ))
-    fileHandler = logging.FileHandler(log_file)
-    fileHandler.setFormatter(
-        logging.Formatter(fmt="[%(relativeCreated) 8d] %(message)s")
-    )
-    fileHandler.setLevel(logging.DEBUG)
+    ch = logging.FileHandler(log_file)
+    ch.setFormatter(MyFormatter('[%(relStrCreated)s] %(message)s'))
+    ch.setLevel(logging.DEBUG)
     logger.handlers = [h for h in logger.handlers if not isinstance(h, logging.FileHandler)]
-    logger.addHandler(fileHandler)
+    logger.addHandler(ch)
 
 def output_dir_name(label):
     """ Utility function for consistent output dir names.

@@ -32,5 +32,4 @@ class MyExperiment(QBallExperiment):
 
     def setup_imagedata(self):
         logging.info("Data setup.")
-        #np.random.seed(seed=234234)
         self.S_data_orig, self.S_data, self.gtab = gen.synth_unimodals()

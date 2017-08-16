@@ -32,6 +32,8 @@ class Experiment(object):
                             help="Activate batch processing (no plot).")
         parser.add_argument('--cvx', action="store_true", default=False,
                             help="Use CVX as solver engine.")
+        parser.add_argument('--seed', metavar="SEED", default=None, type=int,
+                            help="Random seed for noise generation.")
         parser.add_argument('--params', metavar='SOLVER_PARAMS',
                             default='', type=str,
                             help="Params to be passed to the solver.")
@@ -46,9 +48,13 @@ class Experiment(object):
         self.resume = parsed_args.resume
         self.interactive = not parsed_args.batch
 
+        if parsed_args.seed is not None:
+            np.random.seed(seed=parsed_args.seed)
+
         output_dir_create(self.output_dir)
         add_log_file(logging.getLogger(), self.output_dir)
         backup_source(self.output_dir)
+        logging.info("Args: %s" % args)
         self.params = {}
 
     def setup_imagedata(self): pass

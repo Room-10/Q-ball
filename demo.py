@@ -6,8 +6,6 @@ import logging
 import qball.util
 
 if __name__ == "__main__":
-    logging.info("Running from command line: %s" % sys.argv)
-
     import qball.experiments
     pth = qball.experiments.__path__
     exp_names = [name for _,name,_ in pkgutil.iter_modules(pth)]
@@ -27,9 +25,9 @@ if __name__ == "__main__":
     if sys.argv[2] not in model_names:
         sys.exit("Error: Unknown model '%s'" % sys.argv[2])
 
+    logging.info("Running experiment '%s' from command line." % sys.argv[1])
     exp_modulename = "qball.experiments.%s" % (sys.argv[1],)
     exp_module = importlib.import_module(exp_modulename)
-
     exp = exp_module.MyExperiment(sys.argv[2:])
     exp.run()
     exp.plot()
