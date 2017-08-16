@@ -25,8 +25,7 @@ negative divergence -div(p^k) with Dirichlet boundary.
 
 import numpy as np
 import itertools
-
-from numba import jit
+import numba
 
 def staggered_diff_avgskips(imagedims):
     d_image = len(imagedims)
@@ -38,78 +37,17 @@ def staggered_diff_avgskips(imagedims):
             avgskips[t,m] = np.inner(p[:t] + (0,) + p[t:], skips)
     return avgskips
 
-def gradient_precond(p, u, b, avgskips):
-    staggered_diff_precond(p, u, b, avgskips, adjoint=False)
+@numba.njit
+def gradient(pgrad, u, b, avgskips, precond=False):
+    staggered_diff(pgrad, u, b, avgskips, adjoint=False, precond=precond)
 
-def divergence_precond(p, u, b, avgskips):
-    staggered_diff_precond(p, u, b, avgskips, adjoint=True)
+@numba.njit
+def divergence(p, ugrad, b, avgskips, precond=False):
+    staggered_diff(p, ugrad, b, avgskips, adjoint=True, precond=precond)
 
-@jit
-def staggered_diff_precond(p, u, b, avgskips, adjoint=False):
-    """
-    Computes rowwise L1 norm of `diag(b)D`.
-
-    Args:
-        p : array where the result is written
-        u : just for reference/shape
-        b : factor
-        avgskips : output of staggered_diff_avgskips(u.shape[1:])
-        adjoint : (optional) if True, apply the adjoint operator (writing to u).
-    """
-    l_labels, d_image, n_image = p.shape
-    navgskips =  1 << (d_image - 1)
-    imagedims = u.shape[1:]
-
-    skips = (1,)
-    for t in range(1,d_image):
-        skips += (skips[-1]*imagedims[d_image-t],)
-
-    u_flat = u.reshape(l_labels, n_image)
-    coords = np.zeros(d_image, dtype=np.int64)
-
-    for k in range(l_labels):
-        for t in range(d_image):
-            coords *= 0
-            for i in range(n_image):
-                # ignore boundary points
-                in_range = True
-                for dc in reversed(range(d_image)):
-                    if coords[dc] >= imagedims[dc] - 1:
-                        in_range = False
-                        break
-
-                if in_range:
-                    # regular case
-                    pk = p[k]
-                    uk = u_flat[k]
-                    bk = b[k]/navgskips
-
-                    for avgskip in avgskips[t]:
-                        base = i + avgskip
-                        if adjoint:
-                            uk[base + skips[t]] += np.abs(bk)
-                            uk[base] += np.abs(bk)
-                        else:
-                            pk[t,i] += 2*np.abs(bk)
-
-                # advance coordinates
-                for dd in reversed(range(d_image)):
-                    coords[dd] += 1
-                    if coords[dd] >= imagedims[dd]:
-                        coords[dd] = 0
-                    else:
-                        break
-
-def gradient(pgrad, u, b, avgskips):
-    staggered_diff(pgrad, u, b, avgskips, adjoint=False)
-
-def divergence(p, ugrad, b, avgskips):
-    staggered_diff(p, ugrad, b, avgskips, adjoint=True)
-
-@jit
-def staggered_diff(p, u, b, avgskips, adjoint=False):
-    """
-    Computes `p^kt += b^k * Duk^t`.
+@numba.njit
+def staggered_diff(p, u, b, avgskips, adjoint=False, precond=False):
+    """ Computes `p^kt += b^k * Duk^t`.
 
     Args:
         p : array where the result is written as `p^kt += b^k * Duk^t`.
@@ -118,14 +56,16 @@ def staggered_diff(p, u, b, avgskips, adjoint=False):
         avgskips : output of staggered_diff_avgskips(u.shape[1:])
         adjoint : (optional) if True, apply the adjoint operator (reading from p
                   and writing to u), i.e. `u^k -= b^k * div(p^k)`.
+        precond : Computes rowwise/colwise L1 norm of `diag(b)D`.
     """
     l_labels, d_image, n_image = p.shape
     navgskips =  1 << (d_image - 1)
     imagedims = u.shape[1:]
 
-    skips = (1,)
+    skips = np.zeros(d_image, dtype=np.int64)
+    skips[0] = 1
     for t in range(1,d_image):
-        skips += (skips[-1]*imagedims[d_image-t],)
+        skips[t] = skips[t-1]*imagedims[d_image-t]
 
     u_flat = u.reshape(l_labels, n_image)
     coords = np.zeros(d_image, dtype=np.int64)
@@ -136,7 +76,9 @@ def staggered_diff(p, u, b, avgskips, adjoint=False):
             for i in range(n_image):
                 # ignore boundary points
                 in_range = True
-                for dc in reversed(range(d_image)):
+                dc = d_image
+                while dc > 0:
+                    dc -= 1
                     if coords[dc] >= imagedims[dc] - 1:
                         in_range = False
                         break
@@ -149,15 +91,24 @@ def staggered_diff(p, u, b, avgskips, adjoint=False):
 
                     for avgskip in avgskips[t]:
                         base = i + avgskip
-                        if adjoint:
-                            uk[base + skips[t]] += bk * pk[t,i]
-                            uk[base] -= bk * pk[t,i]
+                        if precond:
+                            if adjoint:
+                                uk[base + skips[t]] += bk * pk[t,i]
+                                uk[base] -= bk * pk[t,i]
+                            else:
+                                pk[t,i] += bk * uk[base + skips[t]]
+                                pk[t,i] -= bk * uk[base]
                         else:
-                            pk[t,i] += bk * uk[base + skips[t]]
-                            pk[t,i] -= bk * uk[base]
+                            if adjoint:
+                                uk[base + skips[t]] += np.abs(bk)
+                                uk[base] += np.abs(bk)
+                            else:
+                                pk[t,i] += 2*np.abs(bk)
 
                 # advance coordinates
-                for dd in reversed(range(d_image)):
+                dd = d_image
+                while dd > 0:
+                    dd -= 1
                     coords[dd] += 1
                     if coords[dd] >= imagedims[dd]:
                         coords[dd] = 0

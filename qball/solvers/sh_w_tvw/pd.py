@@ -2,7 +2,7 @@
 from qball.tools import normalize_odf, apply_PB, apply_PB0
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import project_gradients, norms_spectral, norms_nuclear
-from qball.tools.diff import gradient, divergence, gradient_precond, divergence_precond
+from qball.tools.diff import gradient, divergence
 from qball.solvers import PDHGModelHARDI
 
 import numpy as np
@@ -200,7 +200,7 @@ class MyPDHGModel(PDHGModelHARDI):
         y[:] = 0.0
 
         # p += diag(b) D u (D is the gradient on a staggered grid)
-        gradient_precond(p, u, c['b'], c['avgskips'])
+        gradient(p, u, c['b'], c['avgskips'], precond=True)
 
         # p_t^i += -P^j' B^j' w_t^ij
         for j in range(c['B'].shape[0]):
@@ -249,7 +249,7 @@ class MyPDHGModel(PDHGModelHARDI):
                               + norm(c['B'][j,l,:], ord=1)
 
         # u += diag(b) D' p (where D' = -div with Dirichlet boundary)
-        divergence_precond(p, u, c['b'], c['avgskips'])
+        divergence(p, u, c['b'], c['avgskips'], precond=True)
 
         # v = Y'q1
         for m in range(v.shape[0]):
