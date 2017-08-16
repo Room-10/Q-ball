@@ -194,6 +194,7 @@ class MyPDHGModel(PDHGModelHARDI):
     def precond(self, x, y):
         u, v, w, w0 = x.vars()
         p, g, q0, q1, p0, g0 = y.vars()
+        u_flat = u.reshape(u.shape[0], -1)
         c = self.constvars
         x[:] = 0.0
         y[:] = 0.0
@@ -202,91 +203,63 @@ class MyPDHGModel(PDHGModelHARDI):
         gradient_precond(p, u, c['b'], c['avgskips'])
 
         # p_t^i += -P^j' B^j' w_t^ij
-        for t in range(p.shape[1]):
-            for i in range(p.shape[2]):
-                for j in range(c['B'].shape[0]):
-                    for l in range(c['B'].shape[1]):
-                        for m in range(c['B'].shape[2]):
-                            p[c['P'][j,m],t,i] += np.abs(c['B'][j,l,m])
+        for j in range(c['B'].shape[0]):
+            for m in range(c['B'].shape[2]):
+                p[c['P'][j,m],:,:] += norm(c['B'][j,:,m], ord=1)
 
         # g^ij = A^j' w^ij
-        for i in range(g.shape[0]):
-            for j in range(g.shape[1]):
-                for m in range(g.shape[2]):
-                    for t in range(g.shape[3]):
-                        for l in range(c['A'].shape[1]):
-                            g[i,j,m,t] += np.abs(c['A'][j,l,m])
+        for j in range(g.shape[1]):
+            for m in range(g.shape[2]):
+                g[:,j,m,:] += norm(c['A'][j,:,m], ord=1)
 
         # q0 = b'u
-        for i in range(q0.shape[0]):
-            for k in range(c['b'].shape[0]):
-                q0[i] += np.abs(c['b_precond']*c['b'][k])
+        q0 += c['b_precond']*norm(c['b'], ord=1)
 
         # q1 = Yv - u
         for k in range(q1.shape[0]):
-            for i in range(q1.shape[1]):
-                q1[k,i] += 1.0
-                for m in range(c['Y'].shape[1]):
-                    q1[k,i] += np.abs(c['Y'][k,m])
+            q1[k,:] += norm(c['Y'][k,:], ord=1) + 1.0
 
         if c['dataterm'] == "W1":
             # p0 = diag(b) u
+            p0 += np.abs(c['b'])[:,None]
+
             # p0^i += - P^j' B^j' w0^ij
-            for i in range(p0.shape[1]):
-                for k in range(p0.shape[0]):
-                    p0[k,i] += np.abs(c['b'][k])
-                for j in range(c['B'].shape[0]):
-                    for l in range(c['B'].shape[1]):
-                        for m in range(c['B'].shape[2]):
-                            p0[c['P'][j,m],i] += np.abs(c['B'][j,l,m])
+            for j in range(c['B'].shape[0]):
+                for m in range(c['B'].shape[2]):
+                    p0[c['P'][j,m],:] += norm(c['B'][j,:,m], ord=1)
 
             # g0^ij += A^j' w0^ij
-            for i in range(g0.shape[0]):
-                for j in range(g0.shape[1]):
-                    for m in range(g0.shape[2]):
-                        for l in range(c['A'].shape[1]):
-                            g0[i,j,m] += np.abs(c['A'][j,l,m])
+            for j in range(g0.shape[1]):
+                for m in range(g0.shape[2]):
+                    g0[:,j,m] += norm(c['A'][j,:,m], ord=1)
 
         y[:] = 1.0/y[:]
 
         # u = b q0' - q1
-        for k in range(u.shape[0]):
-            for i in range(u.shape[1]):
-                u[k,i] += np.abs(c['b_precond']*c['b'][k])
-                u[k,i] += 1.0
+        u_flat += c['b_precond']*np.abs(c['b'])[:,None] + 1.0
 
         if c['dataterm'] == "W1":
             # u += diag(b) p0
-            for k in range(u.shape[0]):
-                for i in range(u.shape[1]):
-                    u[k,i] += np.abs(c['b'][k])
+            u_flat += np.abs(c['b'])[:,None]
 
             # w0^ij = A^j g0^ij - B^j P^j p0^i
-            for i in range(w0.shape[0]):
-                for j in range(w0.shape[1]):
-                    for l in range(w0.shape[2]):
-                        for m in range(c['A'].shape[2]):
-                            w0[i,j,l] += np.abs(c['A'][j,l,m])
-                            w0[i,j,l] += np.abs(c['B'][j,l,m])
+            for j in range(w0.shape[1]):
+                for l in range(w0.shape[2]):
+                    w0[:,j,l] += norm(c['A'][j,l,:], ord=1) \
+                              + norm(c['B'][j,l,:], ord=1)
 
         # u += diag(b) D' p (where D' = -div with Dirichlet boundary)
         divergence_precond(p, u, c['b'], c['avgskips'])
 
         # v = Y'q1
         for m in range(v.shape[0]):
-            for i in range(v.shape[1]):
-                for k in range(c['Y'].shape[0]):
-                    v[m,i] += np.abs(c['Y'][k,m])
+            v[m,:] += norm(c['Y'][:,m], ord=1)
 
-        # w^ij = A^j g^ij
-        # w_t^ij += -B^j P^j p_t^i
-        for i in range(w.shape[0]):
-            for j in range(w.shape[1]):
-                for l in range(w.shape[2]):
-                    for t in range(w.shape[3]):
-                        for m in range(c['A'].shape[2]):
-                            w[i,j,l,t] += np.abs(c['A'][j,l,m])
-                            w[i,j,l,t] += np.abs(c['B'][j,l,m])
+        # w^ij = A^j g^ij - B^j P^j p_t^i
+        for j in range(w.shape[1]):
+            for l in range(w.shape[2]):
+                w[:,j,l,:] += norm(c['A'][j,l,:], ord=1) \
+                           + norm(c['B'][j,l,:], ord=1)
 
         x[:] = 1.0/x[:]
 

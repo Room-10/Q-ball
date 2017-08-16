@@ -90,8 +90,7 @@ def staggered_diff_precond(p, u, b, avgskips, adjoint=False):
                             uk[base + skips[t]] += np.abs(bk)
                             uk[base] += np.abs(bk)
                         else:
-                            pk[t,i] += np.abs(bk)
-                            pk[t,i] += np.abs(bk)
+                            pk[t,i] += 2*np.abs(bk)
 
                 # advance coordinates
                 for dd in reversed(range(d_image)):
