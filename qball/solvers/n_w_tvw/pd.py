@@ -1,5 +1,5 @@
 
-from qball.tools import normalize_odf, apply_PB, apply_PB0
+from qball.tools import normalize_odf, apply_PB
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import project_gradients, norms_spectral, norms_nuclear
 from qball.tools.diff import gradient, divergence
@@ -229,7 +229,7 @@ class MyPDHGModel(PDHGModelHARDI):
             # p0grad = diag(b) u
             np.einsum('k,ki->ki', c['b'], u.reshape(l_labels, -1), out=p0grad)
             # p0grad^i += - P^j' B^j' w0^ij
-            apply_PB0(p0grad, c['P'], c['B'], w0)
+            apply_PB(p0grad[:,None,:], c['P'], c['B'], w0[:,:,:,None])
             # g0grad^ij += A^j' w0^ij
             np.einsum('jlm,ijl->ijm', c['A'], w0, out=g0grad)
 

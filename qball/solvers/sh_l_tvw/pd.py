@@ -1,5 +1,5 @@
 
-from qball.tools import apply_PB, apply_PB0
+from qball.tools import apply_PB
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import project_gradients, norms_spectral, norms_nuclear
 from qball.tools.diff import gradient, divergence
