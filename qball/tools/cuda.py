@@ -85,10 +85,19 @@ def prepare_kernels(files, templates, constvars, itervars):
                 attrs[devattr.MAX_GRID_DIM_Y],
                 attrs[devattr.MAX_GRID_DIM_Z])
     logging.info("CUDA kernels prepared for GPU (MAX_BLOCK_DIM={blockdims}, " \
-        "MAX_GRID_DIM={griddims}, MAX_THREADS_PER_BLOCK={maxthreads})".format(
+        "MAX_GRID_DIM={griddims}, MAX_THREADS_PER_BLOCK={maxthreads}, " \
+        "TOTAL_CONSTANT_MEMORY={const_mem}, " \
+        "MAX_SHARED_MEMORY_PER_BLOCK={shared_mem}, " \
+        "MAX_REGISTERS_PER_BLOCK={registers}, " \
+        "KERNEL_EXEC_TIMEOUT={kernel_timeout}" \
+        ")".format(
         blockdims="x".join(map(str,blockdims)),
         griddims="x".join(map(str,griddims)),
-        maxthreads=attrs[devattr.MAX_THREADS_PER_BLOCK]
+        maxthreads=attrs[devattr.MAX_THREADS_PER_BLOCK],
+        const_mem=attrs[devattr.TOTAL_CONSTANT_MEMORY],
+        shared_mem=attrs[devattr.MAX_SHARED_MEMORY_PER_BLOCK],
+        registers=attrs[devattr.MAX_REGISTERS_PER_BLOCK],
+        kernel_timeout=attrs[devattr.KERNEL_EXEC_TIMEOUT],
     ))
 
     return kernels, vars
@@ -117,9 +126,7 @@ def prepare_vars(vars):
         elif type(val) is bool:
             preamble += "#define %s (%d)\n" % (name, 1 if val else 0)
         elif type(val) is float or type(val) is np.float64:
-            signature += "d"
-            param_strings.append("double %s" % name)
-            constvars.append((name, val))
+            preamble += "__constant__ double %s = %s;\n" % (name, repr(val))
         elif type(val) is np.ndarray:
             if val.dtype == 'int64':
                 preamble += "__constant__ int %s[%d] = { %s };\n" % (
@@ -130,6 +137,7 @@ def prepare_vars(vars):
                     name, val.size,
                     ", ".join(str(int(i)) for i in val.ravel()))
             elif val.dtype == 'float64':
+                # TODO: This kind of data should be in shared memory...
                 signature += "P"
                 param_strings.append("double *%s" % name)
                 constvars.append((name, gpuarray.to_gpu(val).gpudata))
