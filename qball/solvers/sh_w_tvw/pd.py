@@ -200,67 +200,39 @@ class MyPDHGModel(PDHGModelHARDI):
         y[:] = 0.0
 
         # p += diag(b) D u (D is the gradient on a staggered grid)
-        gradient(p, u, c['b'], c['avgskips'], precond=True)
-
         # p_t^i += -P^j' B^j' w_t^ij
-        for j in range(c['B'].shape[0]):
-            for m in range(c['B'].shape[2]):
-                p[c['P'][j,m],:,:] += norm(c['B'][j,:,m], ord=1)
-
         # g^ij = A^j' w^ij
-        for j in range(g.shape[1]):
-            for m in range(g.shape[2]):
-                g[:,j,m,:] += norm(c['A'][j,:,m], ord=1)
-
         # q0 = b'u
-        q0 += c['b_precond']*norm(c['b'], ord=1)
-
         # q1 = Yv - u
-        for k in range(q1.shape[0]):
-            q1[k,:] += norm(c['Y'][k,:], ord=1) + 1.0
-
+        # p0 = diag(b) u (W1)
+        # p0^i += - P^j' B^j' w0^ij (W1)
+        # g0^ij += A^j' w0^ij (W1)
+        gradient(p, u, c['b'], c['avgskips'], precond=True)
+        apply_PB(p, c['P'], c['B'], w, precond=True)
+        g += norm(c['A'], ord=1, axis=1)[None,:,:,None]
+        q0 += c['b_precond']*norm(c['b'], ord=1)
+        q1 += norm(c['Y'], ord=1, axis=1)[:,None] + 1.0
         if c['dataterm'] == "W1":
-            # p0 = diag(b) u
             p0 += np.abs(c['b'])[:,None]
-
-            # p0^i += - P^j' B^j' w0^ij
-            for j in range(c['B'].shape[0]):
-                for m in range(c['B'].shape[2]):
-                    p0[c['P'][j,m],:] += norm(c['B'][j,:,m], ord=1)
-
-            # g0^ij += A^j' w0^ij
-            for j in range(g0.shape[1]):
-                for m in range(g0.shape[2]):
-                    g0[:,j,m] += norm(c['A'][j,:,m], ord=1)
-
+            apply_PB(p0[:,None,:], c['P'], c['B'], w0[:,:,:,None], precond=True)
+            g0 += norm(c['A'], ord=1, axis=1)[None,:,:]
         y[:] = 1.0/y[:]
 
         # u = b q0' - q1
-        u_flat += c['b_precond']*np.abs(c['b'])[:,None] + 1.0
-
-        if c['dataterm'] == "W1":
-            # u += diag(b) p0
-            u_flat += np.abs(c['b'])[:,None]
-
-            # w0^ij = A^j g0^ij - B^j P^j p0^i
-            for j in range(w0.shape[1]):
-                for l in range(w0.shape[2]):
-                    w0[:,j,l] += norm(c['A'][j,l,:], ord=1) \
-                              + norm(c['B'][j,l,:], ord=1)
-
+        # u += diag(b) p0 (W1)
+        # w0^ij = A^j g0^ij - B^j P^j p0^i (W1)
         # u += diag(b) D' p (where D' = -div with Dirichlet boundary)
-        divergence(p, u, c['b'], c['avgskips'], precond=True)
-
         # v = Y'q1
-        for m in range(v.shape[0]):
-            v[m,:] += norm(c['Y'][:,m], ord=1)
-
         # w^ij = A^j g^ij - B^j P^j p_t^i
-        for j in range(w.shape[1]):
-            for l in range(w.shape[2]):
-                w[:,j,l,:] += norm(c['A'][j,l,:], ord=1) \
-                           + norm(c['B'][j,l,:], ord=1)
-
+        u_flat += c['b_precond']*np.abs(c['b'])[:,None] + 1.0
+        if c['dataterm'] == "W1":
+            u_flat += np.abs(c['b'])[:,None]
+            w0 += norm(c['A'], ord=1, axis=2)[None,:,:]
+            w0 += norm(c['B'], ord=1, axis=2)[None,:,:]
+        divergence(p, u, c['b'], c['avgskips'], precond=True)
+        v += norm(c['Y'], ord=1, axis=0)[:,None]
+        w += norm(c['A'], ord=1, axis=2)[None,:,:,None]
+        w += norm(c['B'], ord=1, axis=2)[None,:,:,None]
         x[:] = 1.0/x[:]
 
     def linop(self, x, ygrad):

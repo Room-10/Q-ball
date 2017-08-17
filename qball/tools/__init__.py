@@ -60,7 +60,7 @@ def plot_mesh3(ax, vecs, tris):
     #    ax.text(1.1*vecs[0,k], 1.1*vecs[1,k], 1.1*vecs[2,k], str(k))
 
 @numba.njit
-def apply_PB(pgrad, P, B, w):
+def apply_PB(pgrad, P, B, w, precond=False):
     """
     # TODO: advanced indexing without creating a copy on the lhs. possible??
     pgrad[b_sph.P] -= np.einsum('jlm,ijlt->jmti', b_sph.B, w)
@@ -70,4 +70,7 @@ def apply_PB(pgrad, P, B, w):
             for l in range(w.shape[2]):
                 for m in range(B.shape[2]):
                     for t in range(w.shape[3]):
-                        pgrad[P[j,m],t,i] -= B[j,l,m] * w[i,j,l,t]
+                        if precond:
+                            pgrad[P[j,m],t,i] += np.abs(B[j,l,m])
+                        else:
+                            pgrad[P[j,m],t,i] -= B[j,l,m]*w[i,j,l,t]
