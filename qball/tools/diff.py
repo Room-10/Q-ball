@@ -93,17 +93,17 @@ def staggered_diff(p, u, b, avgskips, adjoint=False, precond=False):
                         base = i + avgskip
                         if precond:
                             if adjoint:
+                                uk[base + skips[t]] += np.abs(bk)
+                                uk[base] += np.abs(bk)
+                            else:
+                                pk[t,i] += 2*np.abs(bk)
+                        else:
+                            if adjoint:
                                 uk[base + skips[t]] += bk * pk[t,i]
                                 uk[base] -= bk * pk[t,i]
                             else:
                                 pk[t,i] += bk * uk[base + skips[t]]
                                 pk[t,i] -= bk * uk[base]
-                        else:
-                            if adjoint:
-                                uk[base + skips[t]] += np.abs(bk)
-                                uk[base] += np.abs(bk)
-                            else:
-                                pk[t,i] += 2*np.abs(bk)
 
                 # advance coordinates
                 dd = d_image
