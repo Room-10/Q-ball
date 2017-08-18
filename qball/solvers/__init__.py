@@ -6,6 +6,7 @@ from qball.tools.blocks import block_normest
 import qball.util as util
 
 import numpy as np
+from numpy.linalg import norm
 
 import logging
 
@@ -19,6 +20,8 @@ class PDHGModel(object):
 
     def prepare_gpu(self):
         from qball.tools.cuda import prepare_kernels
+        self.gpu_constvars['x_size'] = self.itervars['xk'].data.size;
+        self.gpu_constvars['y_size'] = self.itervars['yk'].data.size;
         self.cuda_kernels, self.cuda_vars = prepare_kernels(self.cuda_files,
             self.cuda_templates, dict(self.constvars, **self.gpu_constvars),
             self.itervars)
@@ -28,35 +31,48 @@ class PDHGModel(object):
         c = self.constvars
 
         # --- primals:
-        self.linop_adjoint(i['xkp1'], i['ykp1'])
         if 'precond' in c:
-            i['xkp1'][:] = i['xk'][:] - c['xtau'][:]*i['xkp1'][:]
+            i['xkp1'][:] = i['xk'][:] - c['xtau'][:]*i['xgradk'][:]
+            self.prox_primal(i['xkp1'], c['xtau'])
         else:
-            i['xkp1'][:] = i['xk'] - c['tau']*i['xkp1']
-        # prox
-        self.prox_primal(i['xkp1'])
-        # overrelaxation
-        i['xbark'][:] = (1 + c['theta'])*i['xkp1'] - c['theta']*i['xk']
-        # update
-        i['xk'][:] = i['xkp1']
+            tau = i['tauk'] if 'adaptive' in c else c['tau']
+            i['xkp1'][:] = i['xk'] - tau*i['xgradk']
+            self.prox_primal(i['xkp1'], tau)
+        self.linop(i['xkp1'], i['ygradkp1'])
+        i['ygradbk'][:] = (1 + c['theta'])*i['ygradkp1'] - c['theta']*i['ygradk']
 
         # --- duals:
-        self.linop(i['xbark'], i['ykp1'])
         if 'precond' in c:
-            i['ykp1'][:] = i['yk'][:] + c['ysigma'][:]*i['ykp1'][:]
+            i['ykp1'][:] = i['yk'][:] + c['ysigma'][:]*i['ygradbk'][:]
+            self.prox_dual(i['ykp1'], c['ysigma'])
         else:
-            i['ykp1'][:] = i['yk'] + c['sigma']*i['ykp1']
-        # prox
-        self.prox_dual(i['ykp1'])
-        # update
-        i['yk'][:] = i['ykp1']
+            sigma = i['sigmak'] if 'adaptive' in c else c['sigma']
+            i['ykp1'][:] = i['yk'] + sigma*i['ygradbk']
+            self.prox_dual(i['ykp1'], sigma)
+        self.linop_adjoint(i['xgradkp1'], i['ykp1'])
 
         # --- step sizes:
-        """
-        The Goldstein adaptive stepsizes are very memory intensive.
-        They require xk, xkp1, xgradk, xgradkp1.
-        That's double the memory we currently use.
-        """
+        if 'adaptive' in c and i['alphak'] > 1e-10:
+            i['res_pk'] = norm((i['xk'][:] - i['xkp1'][:])/i['tauk']
+                        - (i['xgradk'][:] - i['xgradkp1'][:]), ord=1)
+            i['res_dk'] = norm((i['yk'][:] - i['ykp1'][:])/i['sigmak']
+                        - (i['ygradk'][:] - i['ygradkp1'][:]), ord=1)
+
+            if i['res_pk'] > c['s']*i['res_dk']*c['Delta']:
+                i['tauk'] *= 1.0/(1.0 - i['alphak'])
+                i['sigmak'] *= (1.0 - i['alphak'])
+                i['alphak'] *= c['eta']
+            if i['res_pk'] < c['s']*i['res_dk']/c['Delta']:
+                i['tauk'] *= (1.0 - i['alphak'])
+                i['sigmak'] *= 1.0/(1.0 - i['alphak'])
+                i['alphak'] *= c['eta']
+
+        # --- update
+        i['xk'][:] = i['xkp1']
+        i['xgradk'][:] = i['xgradkp1']
+        i['yk'][:] = i['ykp1']
+        i['ygradk'][:] = i['ygradkp1']
+
 
     def obj_primal(self, x, ygrad):
         pass
@@ -70,26 +86,31 @@ class PDHGModel(object):
     def linop_adjoint(self, xgrad, y):
         pass
 
-    def prox_primal(self, x):
+    def prox_primal(self, x, tau):
         pass
 
-    def prox_dual(self, y):
+    def prox_dual(self, y, sigma):
         pass
 
     def solve(self, continue_at=None, step_bound=None, step_factor=1.0,
                     term_relgap=1e-5, term_infeas=None, term_maxiter=int(1e7),
-                    granularity=5000, use_gpu=True, precond=False):
+                    granularity=5000, use_gpu=True, steps="const"):
         i = self.itervars
         c = self.constvars
 
         if continue_at is not None:
             i['xk'][:], i['yk'][:] = continue_at
 
-        i['xbark'] = i['xk'].copy()
         i['xkp1'] = i['xk'].copy()
-        xgrad = i['xk'].copy()
+        i['xgradk'] = i['xk'].copy()
+        i['xgradkp1'] = i['xk'].copy()
         i['ykp1'] = i['yk'].copy()
-        ygrad = i['yk'].copy()
+        i['ygradk'] = i['yk'].copy()
+        i['ygradkp1'] = i['yk'].copy()
+        i['ygradbk'] = i['yk'].copy()
+
+        self.linop(i['xk'], i['ygradk'])
+        self.linop_adjoint(i['xgradk'], i['yk'])
 
         if term_infeas is None:
             term_infeas = term_relgap
@@ -97,7 +118,7 @@ class PDHGModel(object):
         obj_p = obj_d = infeas_p = infeas_d = relgap = 0.
         c['theta'] = 1.0 # overrelaxation
 
-        if precond:
+        if steps == "precond":
             c['precond'] = True
             c['xtau'] = i['xk'].copy()
             c['ysigma'] = i['yk'].copy()
@@ -113,10 +134,20 @@ class PDHGModel(object):
                 bnd = truncate(1.0/op_norm**2, 3) # < 1/|K|^2
             else:
                 bnd = step_bound
-            fact = step_factor # tau/sigma
-            c['sigma'] = np.sqrt(bnd/fact)
-            c['tau'] = bnd/c['sigma']
-            logging.info("Step bounds: %f (%f | %f)" % (bnd, c['sigma'], c['tau']))
+            if steps == "adaptive":
+                c['adaptive'] = True
+                c['eta'] = 0.95 # 0 < eta < 1
+                c['Delta'] = 1.5 # > 1
+                c['s'] = 255.0 # > 0
+                i['alphak'] = 0.5
+                i['sigmak'] = i['tauk'] = np.sqrt(bnd)
+                i['res_pk'] = i['res_dk'] = 0.0
+            else:
+                fact = step_factor # tau/sigma
+                c['sigma'] = np.sqrt(bnd/fact)
+                c['tau'] = bnd/c['sigma']
+                logging.info("Constant steps: %f (%f | %f)" \
+                                                % (bnd, c['sigma'], c['tau']))
 
         if use_gpu:
             from qball.tools.cuda import iterate_on_gpu
@@ -138,10 +169,8 @@ class PDHGModel(object):
                     _iter += 1
 
                 if interrupt_hdl.interrupted or _iter % granularity == 0:
-                    self.linop(i['xkp1'], ygrad)
-                    self.linop_adjoint(xgrad, i['ykp1'])
-                    obj_p, infeas_p = self.obj_primal(i['xkp1'], ygrad)
-                    obj_d, infeas_d = self.obj_dual(xgrad, i['ykp1'])
+                    obj_p, infeas_p = self.obj_primal(i['xk'], i['ygradk'])
+                    obj_d, infeas_d = self.obj_dual(i['xgradk'], i['yk'])
 
                     # compute relative primal-dual gap
                     relgap = (obj_p - obj_d) / max(np.spacing(1), obj_d)

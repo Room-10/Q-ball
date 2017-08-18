@@ -1,36 +1,49 @@
 
 __global__ void DualKernel1(KERNEL_PARAMS)
 {
-    /* gkp1^ij = A^j' wbark^ij
-     * gkp1 = gk + sigma*gkp1
+    /* ggradkp1^ij = A^j' wkp1^ij
+     * ggradbk = (1 + theta)*ggradkp1 - theta*ggradk
+     * gkp1 = gk + sigma*ggradbk
      *
-     * pkp1 = 0
-     * pkp1_t^i += - P^j' B^j' wbark_t^ij
+     * pgradkp1 = 0
+     * pgradkp1_t^i += - P^j' B^j' wkp1_t^ij
      *
-     * q0kp1 = b'ubark - 1
-     * q0kp1 = q0k + sigma*q0kp1
-     * q0k = q0kp1
+     * q0gradkp1 = b'ukp1
+     * q0gradbk = (1 + theta)*q0gradkp1 - theta*q0gradk
+     * q0kp1 = q0k + sigma*(q0gradbk - 1)
      *
      * (W1:)
-     * p0kp1 = 0
-     * p0kp1_t^i += - P^j' B^j' w0bark_t^ij
+     * p0gradkp1 = 0
+     * p0gradkp1_t^i += - P^j' B^j' w0kp1_t^ij
      *
-     * g0kp1^ij = A^j' w0bark^ij
-     * g0kp1 = g0k + sigma*g0kp1
+     * g0gradkp1^ij = A^j' w0kp1^ij
+     * g0gradbk = (1 + theta)*g0gradkp1 - theta*g0gradk
+     * g0kp1 = g0k + sigma*g0gradbk
      */
 
-    SUBVAR_ubark
-    SUBVAR_wbark
-    SUBVAR_w0bark
+    SUBVAR_ukp1
+    SUBVAR_wkp1
+    SUBVAR_w0kp1
     SUBVAR_gk
     SUBVAR_gkp1
-    SUBVAR_pkp1
+    SUBVAR_ggradbk
+    SUBVAR_ggradk
+    SUBVAR_ggradkp1
+    SUBVAR_pgradkp1
     SUBVAR_q0k
     SUBVAR_q0kp1
-    SUBVAR_p0kp1
+    SUBVAR_q0gradbk
+    SUBVAR_q0gradk
+    SUBVAR_q0gradkp1
+    SUBVAR_p0gradkp1
     SUBVAR_g0k
     SUBVAR_g0kp1
-
+    SUBVAR_g0gradbk
+    SUBVAR_g0gradk
+    SUBVAR_g0gradkp1
+#ifdef adaptive
+    SUBVAR_sigma
+#endif
 #ifdef precond
     SUBVAR_gsigma
     SUBVAR_q0sigma
@@ -43,7 +56,7 @@ __global__ void DualKernel1(KERNEL_PARAMS)
     int t = blockIdx.z*blockDim.z + threadIdx.z;
 
     // stay inside maximum dimensions
-    if(_mj >= sm_skip || i >= n_image || t >= d_image)
+    if (_mj >= sm_skip || i >= n_image || t >= d_image)
        return;
 
     // these have to be computed on the fly
@@ -51,65 +64,87 @@ __global__ void DualKernel1(KERNEL_PARAMS)
     int j = _mj % m_gradients;
 
     // iteration variables and misc.
-    int ll, mm, jj, kk;
+    int ll, mm, jj, kk, idx;
     double newval;
 
+    // ggradkp1[i,j,m,t]
+    idx = i*msd_skip + j*sd_skip + m*d_image + t;
     newval = 0.0;
-    for(ll = 0; ll < s_manifold; ll++) {
+
+    // ggradkp1^ij = A^j' wkp1^ij
+    for (ll = 0; ll < s_manifold; ll++) {
         // jlm,ijlt->ijmt
         newval += A[j*ss_skip + ll*s_manifold + m] *
-                    wbark[i*msd_skip + j*sd_skip + ll*d_image + t];
+                    wkp1[i*msd_skip + j*sd_skip + ll*d_image + t];
     }
-#ifdef precond
-    newval *= gsigma[i*msd_skip + j*sd_skip + m*d_image + t];
-#else
-    newval *= sigma;
-#endif
-    gkp1[i*msd_skip + j*sd_skip + m*d_image + t] =
-        gk[i*msd_skip + j*sd_skip + m*d_image + t] + newval;
+    ggradkp1[idx] = newval;
 
-    if(_mj == 0) {
-        for(kk = 0; kk < l_labels; kk++) {
-            pkp1[kk*nd_skip + t*n_image + i] = 0.0;
+    // ggradbk = (1 + theta)*ggradkp1 - theta*ggradk
+    ggradbk[idx] = (1 + theta)*newval - theta*ggradk[idx];
+
+    // gkp1 = gk + sigma*ggradbk
+#ifdef precond
+    gkp1[idx] = gk[idx] + gsigma[idx]*ggradbk[idx];
+#else
+    gkp1[idx] = gk[idx] + sigma*ggradbk[idx];
+#endif
+
+    if (_mj == 0) {
+        // pgradkp1 = 0
+        for (kk = 0; kk < l_labels; kk++) {
+            pgradkp1[kk*nd_skip + t*n_image + i] = 0.0;
         }
-        for(jj = 0; jj < m_gradients; jj++) {
-            for(mm = 0; mm < r_points; mm++) {
-                newval = pkp1[P[jj*r_points + mm]*nd_skip + t*n_image + i];
-                for(ll = 0; ll < s_manifold; ll++) {
+
+        // pgradkp1_t^i += - P^j' B^j' wkp1_t^ij
+        for (jj = 0; jj < m_gradients; jj++) {
+            for (mm = 0; mm < r_points; mm++) {
+                idx = P[jj*r_points + mm]*nd_skip + t*n_image + i;
+                newval = pgradkp1[idx];
+                for (ll = 0; ll < s_manifold; ll++) {
                     // jlm,ijlt->jmti
                     newval -= B[jj*sr_skip + ll*r_points + mm] *
-                                wbark[i*msd_skip + jj*sd_skip + ll*d_image + t];
+                                wkp1[i*msd_skip + jj*sd_skip + ll*d_image + t];
                 }
-                pkp1[P[jj*r_points + mm]*nd_skip + t*n_image + i] = newval;
+                pgradkp1[idx] = newval;
             }
         }
 
-        if(t == 0) {
+        if (t == 0) {
+            // q0gradkp1 = b'ukp1
             newval = 0.0;
-            for(kk = 0; kk < l_labels; kk++) {
-                newval += b[kk]*ubark[kk*n_image + i];
+            for (kk = 0; kk < l_labels; kk++) {
+                newval += b[kk]*ukp1[kk*n_image + i];
             }
+            newval *= b_precond;
+            q0gradkp1[i] = newval;
+
+            // q0gradbk = (1 + theta)*q0gradkp1 - theta*q0gradk
+            q0gradbk[i] = (1 + theta)*newval - theta*q0gradk[i];
+
+            // q0kp1 = q0k + sigma*(q0gradbk - 1)
 #ifdef precond
-            newval = q0k[i] + q0sigma[i]*b_precond*(newval - 1.0);
+            q0kp1[i] = q0k[i] + q0sigma[i]*(q0gradbk[i] - b_precond);
 #else
-            newval = q0k[i] + sigma*b_precond*(newval - 1.0);
+            q0kp1[i] = q0k[i] + sigma*(q0gradbk[i] - b_precond);
 #endif
-            q0kp1[i] = newval;
-            q0k[i] = newval;
 
 #if 'W' == dataterm
-            for(kk = 0; kk < l_labels; kk++) {
-                p0kp1[kk*n_image + i] = 0.0;
+            // p0gradkp1 = 0
+            for (kk = 0; kk < l_labels; kk++) {
+                p0gradkp1[kk*n_image + i] = 0.0;
             }
-            for(jj = 0; jj < m_gradients; jj++) {
-                for(mm = 0; mm < r_points; mm++) {
-                    newval = p0kp1[P[jj*r_points + mm]*n_image + i];
-                    for(ll = 0; ll < s_manifold; ll++) {
+
+            // p0gradkp1_t^i += - P^j' B^j' w0kp1_t^ij
+            for (jj = 0; jj < m_gradients; jj++) {
+                for (mm = 0; mm < r_points; mm++) {
+                    idx = P[jj*r_points + mm]*n_image + i;
+                    newval = p0gradkp1[idx];
+                    for (ll = 0; ll < s_manifold; ll++) {
                         // jlm,ijlt->jmti
                         newval -= B[jj*sr_skip + ll*r_points + mm] *
-                                    w0bark[i*sm_skip + jj*s_manifold + ll];
+                                    w0kp1[i*sm_skip + jj*s_manifold + ll];
                     }
-                    p0kp1[P[jj*r_points + mm]*n_image + i] = newval;
+                    p0gradkp1[idx] = newval;
                 }
             }
 #endif
@@ -117,49 +152,68 @@ __global__ void DualKernel1(KERNEL_PARAMS)
     }
 
 #if 'W' == dataterm
-    if(t == 0) {
+    if (t == 0) {
+        // g0gradkp1[i,j,m]
+        idx = i*sm_skip + j*s_manifold + m;
         newval = 0.0;
-        for(ll = 0; ll < s_manifold; ll++) {
+
+        // g0gradkp1^ij = A^j' w0kp1^ij
+        for (ll = 0; ll < s_manifold; ll++) {
             // jlm,ijl->ijm
             newval += A[j*ss_skip + ll*s_manifold + m] *
-                        w0bark[i*sm_skip + j*s_manifold + ll];
+                        w0kp1[i*sm_skip + j*s_manifold + ll];
         }
+        g0gradkp1[idx] = newval;
+
+        // g0gradbk = (1 + theta)*g0gradkp1 - theta*g0gradk
+        g0gradbk[idx] = (1 + theta)*newval - theta*g0gradk[idx];
+
+        // g0kp1 = g0k + sigma*g0gradbk
 #ifdef precond
-        newval *= g0sigma[i*sm_skip + j*s_manifold + m];
+        g0kp1[idx] = g0k[idx] + g0sigma[idx]*g0gradbk[idx];
 #else
-        newval *= sigma;
+        g0kp1[idx] = g0k[idx] + sigma*g0gradbk[idx];
 #endif
-        g0kp1[i*sm_skip + j*s_manifold + m] =
-            g0k[i*sm_skip + j*s_manifold + m] + newval;
     }
 #endif
 }
 
 __global__ void DualKernel2(KERNEL_PARAMS)
 {
-    /* pkp1 += diag(b) D ubark (D is the gradient on a staggered grid)
-     * pkp1 = pk + sigma*pkp1
-     * pk = pkp1
+    /* pgradkp1 += diag(b) D ukp1 (D is the gradient on a staggered grid)
+     * pgradbk = (1 + theta)*pgradkp1 - theta*pgradk
+     * pkp1 = pk + sigma*pgradbk
      *
-     * q1kp1 = Y vbark - ubark
-     * q1kp1 = q1k + sigma*q1kp1
-     * q1k = q1kp1
+     * q1gradkp1 = Y vkp1 - ukp1
+     * q1gradbk = (1 + theta)*q1gradkp1 - theta*q1gradk
+     * q1kp1 = q1k + sigma*q1gradbk
      *
      * (W1:)
-     * p0kp1 += diag(b) (ubark - f)
-     * p0kp1 = p0k + sigma*p0kp1
-     * p0k = p0kp1
+     * p0gradkp1 += diag(b) ukp1
+     * p0gradbk = (1 + theta)*p0gradkp1 - theta*p0gradk
+     * p0kp1 = p0k + sigma*(p0gradbk - diag(b) f)
      */
 
-    SUBVAR_ubark
-    SUBVAR_vbark
+    SUBVAR_ukp1
+    SUBVAR_vkp1
     SUBVAR_pk
     SUBVAR_pkp1
+    SUBVAR_pgradbk
+    SUBVAR_pgradk
+    SUBVAR_pgradkp1
     SUBVAR_q1k
     SUBVAR_q1kp1
+    SUBVAR_q1gradbk
+    SUBVAR_q1gradk
+    SUBVAR_q1gradkp1
     SUBVAR_p0k
     SUBVAR_p0kp1
-
+    SUBVAR_p0gradbk
+    SUBVAR_p0gradk
+    SUBVAR_p0gradkp1
+#ifdef adaptive
+    SUBVAR_sigma
+#endif
 #ifdef precond
     SUBVAR_psigma
     SUBVAR_q1sigma
@@ -172,67 +226,89 @@ __global__ void DualKernel2(KERNEL_PARAMS)
     int t = blockIdx.z*blockDim.z + threadIdx.z;
 
     // stay inside maximum dimensions
-    if(k >= l_labels || i >= n_image || t >= d_image)
+    if (k >= l_labels || i >= n_image || t >= d_image)
        return;
 
     // iteration variable and misc.
-    int aa, base;
+    int aa, base, idx;
     double newval;
 
     // skip points on "bottom right" boundary
     int is_boundary = false;
     int curr_i = i, curr_dim = 0;
-    for(aa = d_image - 1; aa >= 0; aa--) {
+    for (aa = d_image - 1; aa >= 0; aa--) {
         curr_dim = curr_i / skips[aa];
         curr_i = curr_i % skips[aa];
-        if(curr_dim == imagedims[d_image - 1 - aa] - 1) {
+        if (curr_dim == imagedims[d_image - 1 - aa] - 1) {
             is_boundary = true;
             break;
         }
     }
+    // pgradkp1[k,t,i]
+    idx = k*nd_skip + t*n_image + i;
+    newval = pgradkp1[idx];
 
-    newval = pkp1[k*nd_skip + t*n_image + i];
-    if(!is_boundary) {
-        for(aa = 0; aa < navgskips; aa++) {
+    // pgradkp1 += diag(b) D ukp1 (D is the gradient on a staggered grid)
+    if (!is_boundary) {
+        for (aa = 0; aa < navgskips; aa++) {
             base = i + avgskips[t*navgskips + aa];
             newval += b[k]/(double)navgskips * (
-                ubark[k*n_image + (base + skips[t])] - ubark[k*n_image + base]
+                ukp1[k*n_image + (base + skips[t])] - ukp1[k*n_image + base]
             );
         }
     }
+    pgradkp1[idx] = newval;
 
+    // pgradbk = (1 + theta)*pgradkp1 - theta*pgradk
+    pgradbk[idx] = (1 + theta)*newval - theta*pgradk[idx];
+
+    // pkp1 = pk + sigma*pgradbk
 #ifdef precond
-    newval = pk[k*nd_skip + t*n_image + i]
-              + psigma[k*nd_skip + t*n_image + i]*newval;
+    pkp1[idx] = pk[idx] + psigma[idx]*pgradbk[idx];
 #else
-    newval = pk[k*nd_skip + t*n_image + i] + sigma*newval;
+    pkp1[idx] = pk[idx] + sigma*pgradbk[idx];
 #endif
-    pkp1[k*nd_skip + t*n_image + i] = newval;
-    pk[k*nd_skip + t*n_image + i] = newval;
 
-    if(t == 0) {
-        newval = -ubark[k*n_image + i];
-        for(aa = 0; aa < l_shm; aa++) {
-            newval += Y[k*l_shm + aa]*vbark[aa*n_image + i];
+    if (t == 0) {
+        // q1gradkp1[k,i]
+        idx = k*n_image + i;
+        newval = -ukp1[idx];
+
+        // q1gradkp1 = Y vkp1 - ukp1
+        for (aa = 0; aa < l_shm; aa++) {
+            newval += Y[k*l_shm + aa]*vkp1[aa*n_image + i];
         }
+        q1gradkp1[idx] = newval;
+
+        // q1gradbk = (1 + theta)*q1gradkp1 - theta*q1gradk
+        q1gradbk[idx] = (1 + theta)*newval - theta*q1gradk[idx];
+
+        // q1kp1 = q1k + sigma*q1gradbk
 #ifdef precond
-        newval = q1k[k*n_image + i] + q1sigma[k*n_image + i]*newval;
+        q1kp1[idx] = q1k[idx] + q1sigma[idx]*q1gradbk[idx];
 #else
-        newval = q1k[k*n_image + i] + sigma*newval;
+        q1kp1[idx] = q1k[idx] + sigma*q1gradbk[idx];
 #endif
-        q1kp1[k*n_image + i] = newval;
-        q1k[k*n_image + i] = newval;
 
 #if 'W' == dataterm
-        newval = p0kp1[k*n_image + i];
-        newval += b[k]*(ubark[k*n_image + i] - f[k*n_image + i]);
+        // p0gradkp1[k,i]
+        idx = k*n_image + i;
+        newval = p0gradkp1[idx];
+
+        // p0gradkp1 += diag(b) ukp1
+        newval += b[k]*ukp1[idx];
+        p0gradkp1[k*n_image + i] = newval;
+
+        // p0gradbk = (1 + theta)*p0gradkp1 - theta*p0gradk
+        p0gradbk[idx] = (1 + theta)*newval - theta*p0gradk[idx];
+
+        // p0kp1 = p0k + sigma*(p0gradbk - diag(b) f)
+        newval = p0gradbk[idx] - b[k]*f[idx];
 #ifdef precond
-        newval = p0k[k*n_image + i] + p0sigma[k*n_image + i]*newval;
+        p0kp1[idx] = p0k[idx] + p0sigma[idx]*newval;
 #else
-        newval = p0k[k*n_image + i] + sigma*newval;
+        p0kp1[idx] = p0k[idx] + sigma*newval;
 #endif
-        p0kp1[k*n_image + i] = newval;
-        p0k[k*n_image + i] = newval;
 #endif
     }
 }
@@ -244,16 +320,10 @@ __global__ void DualKernel3(KERNEL_PARAMS)
      * capability 2.x!
      *
      * gkp1 = proj(gkp1, lbd)
-     * gk = gkp1
-     *
-     * (W1:)
-     * g0kp1 = proj(g0kp1, 1.0)
-     * g0k = g0kp1
+     * g0kp1 = proj(g0kp1, 1.0) (W1)
      */
 
-    SUBVAR_gk
     SUBVAR_gkp1
-    SUBVAR_g0k
     SUBVAR_g0kp1
 
 #if (d_image <= s_manifold)
@@ -273,22 +343,23 @@ __global__ void DualKernel3(KERNEL_PARAMS)
     int j = blockIdx.y*blockDim.y + threadIdx.y;
 
     // stay inside maximum dimensions
-    if(i >= n_image || j >= m_gradients)
+    if (i >= n_image || j >= m_gradients)
        return;
 
     // iteration variables and misc.
-    int mm, tt;
+    int mm, tt, idx;
     double *gij = &gkp1[i*msd_skip + j*sd_skip];
     double norm = 0.0;
 
+    // gkp1 = proj(gkp1, lbd)
 #if (d_image == 1 || s_manifold == 1)
-    for(mm = 0; mm < LIM; mm++) {
+    for (mm = 0; mm < LIM; mm++) {
         norm += gij[mm*STEP1]*gij[mm*STEP1];
     }
 
-    if(norm > lbd*lbd) {
+    if (norm > lbd*lbd) {
         norm = lbd/sqrt(norm);
-        for(mm = 0; mm < LIM; mm++) {
+        for (mm = 0; mm < LIM; mm++) {
             gij[mm*STEP1] *= norm;
         }
     }
@@ -300,7 +371,7 @@ __global__ void DualKernel3(KERNEL_PARAMS)
            trace, d, lmax, lmin, smax, smin;
 
     // C = A^T A, a (2 x 2)-matrix
-    for(mm = 0; mm < LIM; mm++) {
+    for (mm = 0; mm < LIM; mm++) {
         C11 += gij[mm*STEP1 + 0*STEP2]*gij[mm*STEP1 + 0*STEP2];
         C12 += gij[mm*STEP1 + 0*STEP2]*gij[mm*STEP1 + 1*STEP2];
         C22 += gij[mm*STEP1 + 1*STEP2]*gij[mm*STEP1 + 1*STEP2];
@@ -314,10 +385,10 @@ __global__ void DualKernel3(KERNEL_PARAMS)
     smax = sqrt(lmax);
     smin = sqrt(lmin);
 
-    if(smax > lbd) {
+    if (smax > lbd) {
         // Compute orthonormal eigenvectors
-        if(C12 == 0.0) {
-            if(C11 >= C22) {
+        if (C12 == 0.0) {
+            if (C11 >= C22) {
                 V11 = 1.0; V12 = 0.0;
                 V21 = 0.0; V22 = 1.0;
             } else {
@@ -345,7 +416,7 @@ __global__ void DualKernel3(KERNEL_PARAMS)
         M22 = s1*V21*V21 + s2*V22*V22;
 
         // proj(A) = A * M
-        for(mm = 0; mm < LIM; mm++) {
+        for (mm = 0; mm < LIM; mm++) {
             // s1, s2 now used as temp. variables
             s1 = gij[mm*STEP1 + 0*STEP2];
             s2 = gij[mm*STEP1 + 1*STEP2];
@@ -354,30 +425,20 @@ __global__ void DualKernel3(KERNEL_PARAMS)
         }
     }
 #endif
-
-    for(mm = 0; mm < s_manifold; mm++) {
-        for(tt = 0; tt < d_image; tt++) {
-            gk[i*msd_skip + j*sd_skip + mm*d_image + tt] = gij[mm*d_image + tt];
-        }
-    }
-
 #if 'W' == dataterm
     gij = &g0kp1[i*sm_skip + j*s_manifold];
     norm = 0.0;
 
-    for(mm = 0; mm < s_manifold; mm++) {
+    // g0kp1 = proj(g0kp1, 1.0)
+    for (mm = 0; mm < s_manifold; mm++) {
         norm += gij[mm]*gij[mm];
     }
 
-    if(norm > 1.0) {
+    if (norm > 1.0) {
         norm = 1.0/sqrt(norm);
-        for(mm = 0; mm < s_manifold; mm++) {
+        for (mm = 0; mm < s_manifold; mm++) {
             gij[mm] *= norm;
         }
-    }
-
-    for(mm = 0; mm < s_manifold; mm++) {
-            g0k[i*sm_skip + j*s_manifold + mm] = gij[mm];
     }
 #endif
 }

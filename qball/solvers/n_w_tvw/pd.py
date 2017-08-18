@@ -280,22 +280,22 @@ class MyPDHGModel(PDHGModelHARDI):
         # wgrad_t^ij += -B^j P^j p_t^i
         wgrad -= np.einsum('jlm,jmti->ijlt', c['B'], p[c['P']])
 
-    def prox_primal(self, x):
+    def prox_primal(self, x, tau):
         u = x['u']
         c = self.constvars
 
         if c['dataterm'] == "quadratic":
-            u[:] = np.einsum('k,k...->k...', 1.0/(1.0 + c['tau']*c['b']), u)
+            u[:] = np.einsum('k,k...->k...', 1.0/(1.0 + tau*c['b']), u)
         u[:] = np.fmax(0.0, u)
         u[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
-    def prox_dual(self, y):
+    def prox_dual(self, y, sigma):
         p, g, q, p0, g0 = y.vars()
         c = self.constvars
         e = self.extravars
         f_flat = c['f'].reshape(c['f'].shape[0], -1)
 
         project_gradients(g, c['lbd'], e['g_norms'])
-        q -= c['sigma']*c['b_precond']
-        p0 -= c['sigma']*np.einsum('k,ki->ki', c['b'], f_flat)
+        q -= sigma*c['b_precond']
+        p0 -= sigma*np.einsum('k,ki->ki', c['b'], f_flat)
         project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])

@@ -53,21 +53,6 @@ class MyPDHGModel(PDHGModelHARDI):
         c['dataterm']= dataterm
         self.gpu_constvars['dataterm']= dataterm[0].upper()
 
-        self.cuda_templates = [
-            ("PrimalKernel1", (l_labels, 1, 1), (16, 1, 1)),
-            ("PrimalKernel2", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-            ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1)),
-            ("PrimalKernel4", (n_image, l_shm, 1), (16, 16, 1)),
-            ("DualKernel1", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-            ("DualKernel2", (l_labels, n_image, d_image), (16, 16, 1)),
-            ("DualKernel3", (n_image, m_gradients, 1), (16, 16, 1)),
-        ]
-        from pkg_resources import resource_stream
-        self.cuda_files = [
-            resource_stream('qball.solvers.sh_w_tvw', 'cuda_primal.cu'),
-            resource_stream('qball.solvers.sh_w_tvw', 'cuda_dual.cu'),
-        ]
-
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 
         i['xk'] = BlockVar(
@@ -92,6 +77,25 @@ class MyPDHGModel(PDHGModelHARDI):
 
         vk = i['xk']['v']
         vk[0,:] = .5 / np.sqrt(np.pi)
+
+        xy_size = max(i['xk'].data.size, i['yk'].data.size)
+        self.cuda_templates = [
+            ("PrimalKernel1", (n_image, l_labels, 1), (16, 16, 1)),
+            ("PrimalKernel2", (s_manifold*m_gradients, n_image, l_shm*d_image), (16, 8, 4)),
+            ("DualKernel1", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("DualKernel2", (l_labels, n_image, d_image), (16, 16, 1)),
+            ("DualKernel3", (n_image, m_gradients, 1), (16, 16, 1)),
+            ("PrimalKernel3", (l_labels, 1, 1), (16, 1, 1)),
+            ("PrimalKernel4", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("PrimalKernel5", (n_image, l_labels, l_shm), (16, 8, 2)),
+            ("PrimalKernel6", (1, 1, 1), (1, 1, 1)),
+            ("PrimalKernel7", (65535, xy_size//65535 + 1, 1), (32, 24, 1)),
+        ]
+        from pkg_resources import resource_stream
+        self.cuda_files = [
+            resource_stream('qball.solvers.sh_w_tvw', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.sh_w_tvw', 'cuda_dual.cu'),
+        ]
 
         logging.info("HARDI PDHG setup ({l_labels} labels, {l_shm} shm, " \
                      "m={m}; img: {imagedims}; dataterm: {dataterm}, " \
@@ -325,21 +329,21 @@ class MyPDHGModel(PDHGModelHARDI):
         # wgrad_t^ij += -B^j P^j p_t^i
         wgrad -= np.einsum('jlm,jmti->ijlt', c['B'], p[c['P']])
 
-    def prox_primal(self, x):
+    def prox_primal(self, x, tau):
         u = x['u']
         c = self.constvars
 
         if c['dataterm'] == "quadratic":
             f_flat = c['f'].reshape(c['f'].shape[0], -1)
             if 'precond' in c:
-                u[:] += c['xtau']['u'][:]*np.einsum('k,ki->ki', c['b'], f_flat)
+                u[:] += tau['u'][:]*np.einsum('k,ki->ki', c['b'], f_flat)
             else:
-                u[:] += c['tau']*np.einsum('k,ki->ki', c['b'], f_flat)
+                u[:] += tau*np.einsum('k,ki->ki', c['b'], f_flat)
             u[:] = np.einsum('k,k...->k...', 1.0/(1.0 + c['tau']*c['b']), u)
         u[:] = np.fmax(0.0, u)
         u[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
-    def prox_dual(self, y):
+    def prox_dual(self, y, sigma):
         p, g, q0, q1, p0, g0 = y.vars()
         c = self.constvars
         e = self.extravars
@@ -347,12 +351,12 @@ class MyPDHGModel(PDHGModelHARDI):
 
         project_gradients(g, c['lbd'], e['g_norms'])
         if 'precond' in c:
-            q0 -= c['ysigma']['q0'][:]*c['b_precond']
+            q0 -= sigma['q0'][:]*c['b_precond']
         else:
-            q0 -= c['sigma']*c['b_precond']
+            q0 -= sigma*c['b_precond']
         if c['dataterm'] == "W1":
             if 'precond' in c:
-                p0 -= c['ysigma']['p0'][:]*np.einsum('k,ki->ki', c['b'], f_flat)
+                p0 -= sigma['p0'][:]*np.einsum('k,ki->ki', c['b'], f_flat)
             else:
-                p0 -= c['sigma']*np.einsum('k,ki->ki', c['b'], f_flat)
+                p0 -= sigma*np.einsum('k,ki->ki', c['b'], f_flat)
             project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])

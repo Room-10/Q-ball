@@ -205,19 +205,19 @@ class MyPDHGModel(PDHGModelHARDI):
         vtmp = vgrad.reshape((l_shm,)+imagedims)
         divergence(p, vtmp, np.ones(l_shm), c['avgskips'])
 
-    def prox_primal(self, x):
+    def prox_primal(self, x, tau):
         u1, u2, v = x.vars()
         c = self.constvars
 
-        u2 += c['tau']*np.einsum('k,ki->ki', c['b'], c['f'])
-        u2[:] = np.einsum('k,k...->k...', 1.0/(1.0 + c['tau']*c['b']), u2)
+        u2 += tau*np.einsum('k,ki->ki', c['b'], c['f'])
+        u2[:] = np.einsum('k,k...->k...', 1.0/(1.0 + tau*c['b']), u2)
         u1[:] = np.fmax(0.0, u1)
         u1[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
-    def prox_dual(self, y):
+    def prox_dual(self, y, sigma):
         p, q0, q1, q2 = y.vars()
         c = self.constvars
         e = self.extravars
 
         project_duals(p, c['lbd'], e['p_norms'])
-        q0 -= c['sigma']*c['b_precond']
+        q0 -= sigma*c['b_precond']
