@@ -147,7 +147,7 @@ def backup_source(output_dir):
     zipf = zipfile.ZipFile(zip_file, 'w', zipfile.ZIP_DEFLATED)
     addDirToZip(zipf, "qball", exclude=["__pycache__"])
     addDirToZip(zipf, "eval", exclude=["__pycache__"])
-    addDirToZip(zipf, "demos", exclude=["__pycache__"])
-    for f in glob.glob('requirements*.txt') + glob.glob('README.md'):
+    for f in glob.glob('requirements*.txt') + glob.glob('README.md') \
+             + glob.glob('demo.py'):
         zipf.write(f)
     zipf.close()
