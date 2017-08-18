@@ -163,8 +163,14 @@ def prepare_vars(vars):
             else:
                 raise Exception("Numpy dtype not supported: %s" % val.dtype)
         elif type(val) is float or type(val) is np.float64:
-            signature += "d"
-            param_strings.append("double %s" % name)
+            signature += "P"
+            param_strings.append("double *%s" % name)
+            vars['iter'][i] = (name, np.array([val,], dtype=np.float64))
+            subname = name[:-1]
+            if name[-3:] == "kp1":
+                subname = name[:-3]
+            preamble += "#define SUBVAR_%s double %s = %s[0];\n" \
+                                                    % (subname, subname, name)
         else:
             raise Exception("Type not supported: %s" % type(val))
 
