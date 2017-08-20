@@ -18,13 +18,119 @@ class PDHGModel(object):
         self.constvars = {}
         self.extravars = {}
 
+    def prepare_stepsizes(self, step_bound, step_factor, steps):
+        i = self.itervars
+        c = self.constvars
+        if steps == "precond":
+            c['precond'] = True
+            c['xtau'] = i['xk'].copy()
+            c['ysigma'] = i['yk'].copy()
+            logging.info("Determining diagonal preconditioners...")
+            self.precond(c['xtau'], c['ysigma'])
+        else:
+            bnd = step_bound
+            if step_bound is None:
+                logging.info("Estimating optimal step bound...")
+                op = lambda x,y: self.linop(x, y)
+                opadj = lambda x,y: self.linop_adjoint(x, y)
+                op_norm, itn = block_normest(i['xk'].copy(), i['yk'].copy(), op, opadj)
+                # round (floor) to 3 significant digits
+                bnd = truncate(1.0/op_norm**2, 3) # < 1/|K|^2
+            if steps == "adaptive":
+                c['adaptive'] = True
+                c['eta'] = 0.95 # 0 < eta < 1
+                c['Delta'] = 1.5 # > 1
+                c['s'] = 255.0 # > 0
+                i['alphak'] = 0.5
+                i['sigmak'] = i['tauk'] = np.sqrt(bnd)
+                i['res_pk'] = i['res_dk'] = 0.0
+            else:
+                fact = step_factor # tau/sigma
+                c['sigma'] = np.sqrt(bnd/fact)
+                c['tau'] = bnd/c['sigma']
+                logging.info("Constant steps: %f (%f | %f)"
+                             % (bnd,c['sigma'],c['tau']))
+
     def prepare_gpu(self):
         from qball.tools.cuda import prepare_kernels
-        self.gpu_constvars['x_size'] = self.itervars['xk'].data.size;
-        self.gpu_constvars['y_size'] = self.itervars['yk'].data.size;
-        self.cuda_kernels, self.cuda_vars = prepare_kernels(self.cuda_files,
-            self.cuda_templates, dict(self.constvars, **self.gpu_constvars),
-            self.itervars)
+        from pycuda.elementwise import ElementwiseKernel
+        from pycuda.reduction import ReductionKernel
+
+        i = self.itervars
+        c = self.constvars
+
+        p = ("*","[i]") if 'precond' in c else ("","")
+        self.gpu_kernels = {
+            'step_primal': ElementwiseKernel(
+                "double *xkp1, double *xk, double %stau, double *xgradk" % p[0],
+                "xkp1[i] = xk[i] - tau%s*xgradk[i]" % p[1]),
+            'step_dual': ElementwiseKernel(
+                "double *ykp1, double *yk, double %ssigma, double *ygradk" % p[0],
+                "ykp1[i] = yk[i] + sigma%s*ygradk[i]" % p[1]),
+            'overrelax': ElementwiseKernel(
+                "double *ygradbk, double *ygradkp1, double *ygradk, double theta",
+                "ygradbk[i] = (1 + theta)*ygradkp1[i] - theta*ygradk[i]"),
+            'advance': ElementwiseKernel(
+                "double *zk, double *zkp1, double *zgradk, double *zgradkp1",
+                "zk[i] = zkp1[i]; zgradk[i] = zgradkp1[i]"),
+            'residual': 0 if 'adaptive' not in c else ReductionKernel(
+                np.float64, neutral="0", reduce_expr="a+b",
+                map_expr="fabs((zk[i] - zkp1[i])/step - (zgradk[i] - zgradkp1[i]))",
+                arguments="double step, double *zk, double *zkp1, "\
+                         +"double *zgradk, double *zgradkp1"),
+            # the following have to be defined by subclasses:
+            #   'linop', 'linop_adjoint', 'prox_primal', 'prox_dual'
+        }
+
+        self.cuda_kernels, self.gpu_itervars, self.gpu_constvars = \
+            prepare_kernels(self.cuda_files, self.cuda_templates,
+                self.itervars, dict(self.constvars, **self.gpu_constvars),
+                { 'x': i['xk'], 'y': i['yk'] })
+
+    def iteration_step_gpu(self):
+        c = self.constvars
+        i = self.itervars
+        gi = self.gpu_itervars
+        gc = self.gpu_constvars
+        gk = self.gpu_kernels
+
+        if 'precond' in c:
+            tau = gc['xtau']
+            sigma = gc['ysigma']
+        else:
+            tau = i['tauk'] if 'adaptive' in c else c['tau']
+            sigma = i['sigmak'] if 'adaptive' in c else c['sigma']
+
+        # --- primals:
+        gk['step_primal'](gi['xkp1'], gi['xk'], tau, gi['xgradk'])
+        gk['prox_primal'](gi['xkp1'], tau)
+        gk['linop'](gi['xkp1'], gi['ygradkp1'])
+        gk['overrelax'](gi['ygradbk'], gi['ygradkp1'], gi['ygradk'], c['theta'])
+
+        # --- duals:
+        gk['step_dual'](gi['ykp1'], gi['yk'], sigma, gi['ygradbk'])
+        gk['prox_dual'](gi['ykp1'], sigma)
+        gk['linop_adjoint'](gi['xgradkp1'], gi['ykp1'])
+
+        # --- step sizes:
+        if 'adaptive' in c and i['alphak'] > 1e-10:
+            i['res_pk'] = gk['residual'](i['tauk'],
+                gi['xk'], gi['xkp1'], gi['xgradk'], gi['xgradkp1']).get()
+            i['res_dk'] = gk['residual'](i['sigmak'],
+                gi['yk'], gi['ykp1'], gi['ygradk'], gi['ygradkp1']).get()
+
+            if i['res_pk'] > c['s']*i['res_dk']*c['Delta']:
+                i['tauk'] *= 1.0/(1.0 - i['alphak'])
+                i['sigmak'] *= (1.0 - i['alphak'])
+                i['alphak'] *= c['eta']
+            if i['res_pk'] < c['s']*i['res_dk']/c['Delta']:
+                i['tauk'] *= (1.0 - i['alphak'])
+                i['sigmak'] *= 1.0/(1.0 - i['alphak'])
+                i['alphak'] *= c['eta']
+
+        # --- update
+        gk['advance'](gi['xk'], gi['xkp1'], gi['xgradk'], gi['xgradkp1'])
+        gk['advance'](gi['yk'], gi['ykp1'], gi['ygradk'], gi['ygradkp1'])
 
     def iteration_step(self):
         i = self.itervars
@@ -73,7 +179,6 @@ class PDHGModel(object):
         i['yk'][:] = i['ykp1']
         i['ygradk'][:] = i['ygradkp1']
 
-
     def obj_primal(self, x, ygrad):
         pass
 
@@ -117,58 +222,29 @@ class PDHGModel(object):
 
         obj_p = obj_d = infeas_p = infeas_d = relgap = 0.
         c['theta'] = 1.0 # overrelaxation
-
-        if steps == "precond":
-            c['precond'] = True
-            c['xtau'] = i['xk'].copy()
-            c['ysigma'] = i['yk'].copy()
-            logging.info("Determining diagonal preconditioners...")
-            self.precond(c['xtau'], c['ysigma'])
-        else:
-            if step_bound is None:
-                logging.info("Estimating optimal step bound...")
-                op = lambda x,y: self.linop(x, y)
-                opadj = lambda x,y: self.linop_adjoint(x, y)
-                op_norm, itn = block_normest(i['xk'].copy(), i['yk'].copy(), op, opadj)
-                # round (floor) to 3 significant digits
-                bnd = truncate(1.0/op_norm**2, 3) # < 1/|K|^2
-            else:
-                bnd = step_bound
-            if steps == "adaptive":
-                c['adaptive'] = True
-                c['eta'] = 0.95 # 0 < eta < 1
-                c['Delta'] = 1.5 # > 1
-                c['s'] = 255.0 # > 0
-                i['alphak'] = 0.5
-                i['sigmak'] = i['tauk'] = np.sqrt(bnd)
-                i['res_pk'] = i['res_dk'] = 0.0
-            else:
-                fact = step_factor # tau/sigma
-                c['sigma'] = np.sqrt(bnd/fact)
-                c['tau'] = bnd/c['sigma']
-                logging.info("Constant steps: %f (%f | %f)" \
-                                                % (bnd, c['sigma'], c['tau']))
+        self.prepare_stepsizes(step_bound, step_factor, steps)
 
         if use_gpu:
-            from qball.tools.cuda import iterate_on_gpu
             self.prepare_gpu()
+            iteration_step = self.iteration_step_gpu
+        else:
+            iteration_step = self.iteration_step
 
         logging.info("Solving (steps<%d)..." % term_maxiter)
 
         with util.GracefulInterruptHandler() as interrupt_hdl:
             _iter = 0
             while _iter < term_maxiter:
-                if use_gpu:
-                    iterations = iterate_on_gpu(self.cuda_kernels,
-                        self.cuda_vars, granularity)
-                    _iter += iterations
-                    if iterations < granularity:
-                        interrupt_hdl.handle(None, None)
-                else:
-                    self.iteration_step()
-                    _iter += 1
+                iteration_step()
+                _iter += 1
 
                 if interrupt_hdl.interrupted or _iter % granularity == 0:
+                    if interrupt_hdl.interrupted:
+                        logging.debug("Interrupt (SIGINT) at iter=%d" % _iter)
+
+                    if use_gpu:
+                        for n in ['xk','xgradk','yk','ygradk']:
+                            self.gpu_itervars[n].get(ary=i[n].data)
                     obj_p, infeas_p = self.obj_primal(i['xk'], i['ygradk'])
                     obj_d, infeas_d = self.obj_dual(i['xgradk'], i['yk'])
 

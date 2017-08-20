@@ -78,25 +78,6 @@ class MyPDHGModel(PDHGModelHARDI):
         vk = i['xk']['v']
         vk[0,:] = .5 / np.sqrt(np.pi)
 
-        xy_size = max(i['xk'].data.size, i['yk'].data.size)
-        self.cuda_templates = [
-            ("PrimalKernel1", (n_image, l_labels, 1), (16, 16, 1)),
-            ("PrimalKernel2", (s_manifold*m_gradients, n_image, l_shm*d_image), (16, 8, 4)),
-            ("DualKernel1", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-            ("DualKernel2", (l_labels, n_image, d_image), (16, 16, 1)),
-            ("DualKernel3", (n_image, m_gradients, 1), (16, 16, 1)),
-            ("PrimalKernel3", (l_labels, 1, 1), (16, 1, 1)),
-            ("PrimalKernel4", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-            ("PrimalKernel5", (n_image, l_labels, l_shm), (16, 8, 2)),
-            ("PrimalKernel6", (1, 1, 1), (1, 1, 1)),
-            ("PrimalKernel7", (65535, xy_size//65535 + 1, 1), (32, 24, 1)),
-        ]
-        from pkg_resources import resource_stream
-        self.cuda_files = [
-            resource_stream('qball.solvers.sh_w_tvw', 'cuda_primal.cu'),
-            resource_stream('qball.solvers.sh_w_tvw', 'cuda_dual.cu'),
-        ]
-
         logging.info("HARDI PDHG setup ({l_labels} labels, {l_shm} shm, " \
                      "m={m}; img: {imagedims}; dataterm: {dataterm}, " \
                      "lambda={lbd:.3g}) ready.".format(
@@ -106,6 +87,52 @@ class MyPDHGModel(PDHGModelHARDI):
                          l_shm=l_shm,
                          imagedims="x".join(map(str,imagedims)),
                          dataterm=dataterm))
+
+    def prepare_gpu(self):
+        c = self.constvars
+        n_image = c['n_image']
+        d_image = c['d_image']
+        l_labels = c['l_labels']
+        s_manifold = c['s_manifold']
+        m_gradients = c['m_gradients']
+        l_shm = c['l_shm']
+
+        prox_sg= "PP" if 'precond' in c else "Pd"
+        self.cuda_templates = [
+            ("prox_primal", prox_sg, (n_image, l_labels, 1), (16, 16, 1)),
+            ("prox_dual1", prox_sg, (n_image, l_labels, 1), (16, 16, 1)),
+            ("prox_dual2", prox_sg, (n_image, m_gradients, 1), (16, 16, 1)),
+            ("linop1", "PP", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("linop2", "PP", (l_labels, n_image, d_image), (16, 16, 1)),
+            ("linop_adjoint1", "PP", (l_labels, 1, 1), (16, 1, 1)),
+            ("linop_adjoint2", "PP", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("linop_adjoint3", "PP", (n_image, l_labels, l_shm), (16, 8, 2)),
+        ]
+
+        from pkg_resources import resource_stream
+        self.cuda_files = [
+            resource_stream('qball.solvers.sh_w_tvw', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.sh_w_tvw', 'cuda_dual.cu'),
+        ]
+
+        PDHGModelHARDI.prepare_gpu(self)
+
+        def gpu_kernels_linop(*args):
+            self.cuda_kernels['linop1'](*args)
+            self.cuda_kernels['linop2'](*args)
+        self.gpu_kernels['linop'] = gpu_kernels_linop
+
+        def gpu_kernels_linop_adjoint(*args):
+            self.cuda_kernels['linop_adjoint1'](*args)
+            self.cuda_kernels['linop_adjoint2'](*args)
+            self.cuda_kernels['linop_adjoint3'](*args)
+        self.gpu_kernels['linop_adjoint'] = gpu_kernels_linop_adjoint
+
+        self.gpu_kernels['prox_primal'] = self.cuda_kernels['prox_primal']
+        def gpu_kernels_prox_dual(*args):
+            self.cuda_kernels['prox_dual1'](*args)
+            self.cuda_kernels['prox_dual2'](*args)
+        self.gpu_kernels['prox_dual'] = gpu_kernels_prox_dual
 
     def obj_primal(self, x, ygrad):
         # ygrad is precomputed via self.linop(x, ygrad)
