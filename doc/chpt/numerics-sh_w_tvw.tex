@@ -1,22 +1,23 @@
 
 \subsection{Including spherical harmonics regularization}
 
-\paragraph{Saddle point form}
+\paragraph{Primal and dual variables}
+$\mat{x} = (u,v,w,w_0)$, $\mat{y} = (p,g,q_0,q_1,p_0,g_0)$.
 
-Using the spherical harmonics sampling Matrix $\Psi$, the problem's saddle point
-form reads
+\paragraph{Saddle point form}
 \begin{align*}
     \min_{u,v} \max_{p,g} \quad
         & W^1(u,f) + \langle Du, p \rangle_b \\
-    \text{s.t.}\quad 
+    \text{s.t.}\quad
         & \Psi v^i = u^i,
             ~u^i \geq 0, ~\langle u^i, b \rangle = 1 ~\forall i, \\
-        & A^j g^{ij}_t = B^j P^j p^i_t ~\forall i,j,t, \\
-        & \|g^{ij}\|_{\sigma,\infty} \leq \lambda ~\forall i,j
+        & A^j g^{ij}_t = B^j P^j p^i_t,
+          ~\|g^{ij}\|_{\sigma,\infty} \leq \lambda ~\forall i,j,t.
 \end{align*}
-or, using more variables and less constraints,
+
+\paragraph{Saddle point form (long version)}
 \begin{align*}
-    \min_{u,v,w,w_0} \max_{p,g,q_0,q_1,p_0,g_0} \quad
+    \min_{\mat{x}} \max_{\mat{y}} \quad
         & \langle u-f, p_0 \rangle_b
             + \langle Du, p \rangle_b
             + \sum_{i,j} \langle w_0^{ij}, A^j g_0^{ij} - B^j P^j p_0^i \rangle
@@ -24,32 +25,30 @@ or, using more variables and less constraints,
         &\quad + \sum_{i,j,t} \langle w^{ij}_t, A^j g^{ij}_t - B^j P^j p^i_t \rangle
             + \sum_{i} q_0^i \cdot (b^T u^i - 1)
             + \sum_{i} \langle q_1^i, \Psi v^i - u^i \rangle \\
-    \text{s.t.}\quad 
+    \text{s.t.}\quad
         & u^i \geq 0,
             ~\|g^{ij}\|_{\sigma,\infty} \leq \lambda,
             ~\|g_0^{ij}\|_{2} \leq 1 ~\forall i,j.
 \end{align*}
-Here, we denote the Schatten-$p$-norms by $\|\cdot\|_{\sigma,p}$.
 
-\paragraph{Primal and dual objectives}
-
-Accordingly, the primal formulation of the problem is
+\paragraph{Primal formulation}
 \begin{align*}
-    \min_{u,v,w,w_0} \quad
+    \min_{\mat{x}} \quad
         & \sum_{i,j} \| A^{jT} w_0^{ij} \|_{2}
             + \lambda \sum_{i,j} \| A^{jT} w^{ij} \|_{\sigma,1} \\
-    \text{s.t.}\quad 
+    \text{s.t.}\quad
         & \Psi v^i = u^i,
             ~u^i \geq 0, ~\langle u^i, b \rangle = 1 ~\forall i, \\
         & b_k (\partial_t u)_k^i = \sum_j (P^{jT}B^{jT}w^{ij}_t)_{k} ~\forall i,k,t, \\
         & b_k (u - f)_k^i = \sum_j (P^{jT}B^{jT}w_0^{ij})_{k} ~\forall i,k.
 \end{align*}
-and the dual formulation is
+
+\paragraph{Dual formulation}
 \begin{align*}
-    \max_{p,g,q_0,q_1,p_0,g_0} \quad
+    \max_{\mat{x}} \quad
         & - \langle f, p_0 \rangle_b - \sum_i q_0^i \\
-    \text{s.t.}\quad 
-        & \|g^{ij}\|_{\sigma,\infty} \leq \lambda,~ 
+    \text{s.t.}\quad
+        & \|g^{ij}\|_{\sigma,\infty} \leq \lambda,~
           \|g_0^{ij}\|_{2} \leq 1,~
           \psi^T q_1^i = 0 ~\forall i,j, \\
         & A^j g^{ij}_t = B^j P^j p^i_t,~
@@ -58,23 +57,14 @@ and the dual formulation is
 \end{align*}
 
 \paragraph{Proximal mappings}
-
-We rewrite the saddle point form as follows:
 \begin{align*}
-    \min_{u,v,w,w_0} \max_{p,g,\dots} \quad
-        & G(u,v,w,w_0)
-          + \langle K(u,v,w,w_0), (p,g,\dots) \rangle
-          - F^*(p,g,\dots),
-\end{align*}
-where, writing $\beta = \diag(b)$,
-\begin{align*}
-    G(u,v,w,w_0) &= \delta_{\{u \geq 0\}}, \\
-    F^*(p,g,\dots) &= \langle f, p_0 \rangle_b + \sum_{i} q_0^i 
+    G(\mat{x}) &= \delta_{\{u \geq 0\}}, \\
+    F^*(\mat{y}) &= \langle f, p_0 \rangle_b + \sum_{i} q_0^i
         + \sum_{i,j} \delta_{\{
             \|g^{ij}\|_{\sigma,\infty} \leq \lambda,
             \|g_0^{ij}\|_{2} \leq 1
         \}}, \\
-    K(u,v,w,w_0) &= (
+    K(\mat{x}) &= (
         \beta Du - \sum_j P^{jT}B^{jT}w^{j},
         A^T w,
         b^T u,
@@ -82,24 +72,15 @@ where, writing $\beta = \diag(b)$,
         \beta u - \sum_j P^{jT}B^{jT}w_0^{j},
         A^T w_0
     ), \\
-    K^*(p,g,\dots) &= (
+    K^*(\mat{y}) &= (
         \beta p_0 + q_0 \otimes b - \beta \divergence{p} - q_1,
         \psi^T q_1,
         A g - PBp,
         A g_0 - PB p_0,
-    ).
+    ),
 \end{align*}
-
-For a first-order approach we use the proximal mappings
 \begin{align*}
-    \Prox_{\sigma F*}(\bar{p},\bar{g},\dots)
-    &= \argmin_{p,g,\dots} \left\{
-        \frac{\|
-            (p,g,\dots)
-            -(\bar{p},\bar{g},\dots)
-        \|^2}{2\sigma} \right. \\
-    &\left.\hspace{5cm}\phantom{\frac{\|(\bar{g_0})\|^2}{2\sigma}}
-        + F^*(p,g,\dots) \right\} \\
+    \Prox_{\sigma F*}(\bar{\mat{y}})
     &= (
         \bar{p},
         \proj_{\lambda,\infty}(\bar{g}),
@@ -107,16 +88,8 @@ For a first-order approach we use the proximal mappings
         \bar{q_1},
         \bar{p_0} - \sigma \beta f,
         \proj_{1,2}(\bar{g_0})
-    ),
-\end{align*}
-where $e = (1,\dots,1)$, and
-\begin{align*}
-    \Prox_{\tau G}(\bar{u},\bar{v},\bar{w},\bar{w_0})
-    &= \argmin_{u,v,w,w_0} \left\{
-        \frac{
-            \|(u,v,w,w_0)-(\bar{u},\bar{v},\bar{w},\bar{w_0})\|^2
-        }{2\tau} + G(u,v,w,w_0)
-    \right\} \\
+    ), \\
+    \Prox_{\tau G}(\bar{\mat{x}})
     &= \left(
         \max(0,\bar{u}),
         \bar{v},
@@ -124,23 +97,3 @@ where $e = (1,\dots,1)$, and
         \bar{w_0}
     \right).
 \end{align*}
-
-\paragraph{The algorithm}
-
-Now we have everything in place to formulate the algorithm:
-\begin{align*}
-    (p^{k+1},g^{k+1},\dots)
-    &= \Prox_{\sigma F^*}(
-        (p^{k},g^{k},\dots)
-        + \sigma K(\bar{u}^{k},\bar{v}^{k},\bar{w}^{k},\bar{w_0}^{k})
-    ), \\
-    (u^{k+1},v^{k+1},w^{k+1},w_0^{k+1}) &= \Prox_{\tau G}(
-        (u^{k},v^{k},w^{k},w_0^{k})
-        - \tau K^*(p^{k+1},g^{k+1},\dots)
-    ), \\
-    \bar{u}^{k+1} &= u^{k+1} + \theta(u^{k+1}-u^{k}), \\
-    \bar{v}^{k+1} &= v^{k+1} + \theta(v^{k+1}-v^{k}), \\
-    \bar{w}^{k+1} &= w^{k+1} + \theta(w^{k+1}-w^{k}), \\
-    \bar{w_0}^{k+1} &= w_0^{k+1} + \theta(w_0^{k+1}-w_0^{k}).
-\end{align*}
-

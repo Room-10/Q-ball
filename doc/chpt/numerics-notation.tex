@@ -8,7 +8,7 @@ conditions such that the dual operator to the differential operator $D$ is the
 negative divergence with vanishing boundary values.
 We assume that the image takes values in the space of
 probability measures on manifold $\IM = \IS^2$ of dimension $s=2$ that is
-discretized using $l$ points $z^1, \dots, z^l \in \IM$. 
+discretized using $l$ points $z^1, \dots, z^l \in \IM$.
 
 Integration on $\Omega \times \IM$ is discretized as
 \begin{equation}\label{eq:discrete-int}
@@ -20,6 +20,7 @@ $\Omega \times \IM$, i.\,e. $u_k^i \approx u(x^i,z^k)$.
 Equation \eqref{eq:discrete-int} assumes uniform spacing of the $x^i \in \Omega$,
 but makes use of a weight vector $b \in \IR^l$ to account for the volume element
 at each $z^k \in \IM$.
+It will be convenient to abbreviat $\beta := \diag(b)$.
 
 Gradients of functions on $\IM$ are defined on a staggered grid of $m$ points
 $y^1, \dots, y^m \in \IM$ such that each $y^j$ has $r=3$ neighboring points $
@@ -61,8 +62,13 @@ relations of $y^j$ and $A^j \in \IR^{s,s}$, $B^j \in \IR^{s,r}$ are defined by
 Furthermore, a spherical harmonics sampling Matrix $\Psi \in \IR^{l,l'}$ is
 introduced so that $\Psi_{k',k} = Y_{k'}(z^k)$.
 $l'$ is the number of spherical harmonics basis functions used.
+In addition to that, for HARDI reconstruction, we need the reconstruction
+matrix $M \in \IR^{l',l'}$.
+For HARDI reconstruction, we set $f = \log(-\log(E))$, where $E$ are the HARDI
+data.
+Then $M$ is a diagonal matrix.
 
-In the following, the dimensions of the primal and dual variables are 
+In the following, the dimensions of the primal and dual variables are
 \begin{align*}
     & u \in \IR^{l,n}, && v \in \IR^{l',n}, && w \in \IR^{n,m,s,d}, && w_0 \in \IR^{n,m,s}, \\
     & p \in \IR^{l,d,n}, && g \in \IR^{n,m,s,d}, && q \in \IR^{n},
@@ -71,3 +77,38 @@ In the following, the dimensions of the primal and dual variables are
 and the input or reference image is given by $f \in \IR^{l,n}$.
 Further variables $u_i \in \IR^{l,n}$ and $q_i \in \IR^{l,n}$ are introduced
 as needed.
+
+For each model, we first describe the primal and dual variables
+$(\mat{x}, \mat{y})$, the saddle-point form
+\begin{align*}
+    \min_{\mat{x}} \max_{\mat{y}} \quad
+        & G(\mat{x})
+          + \langle K(\mat{x}), (\mat{y}) \rangle
+          - F^*(\mat{y}),
+\end{align*}
+as well as the primal and dual objectives.
+Then we explicitly specify $F^*$, $G$ and $K$ to compute the proximal mappings
+\begin{align*}
+    \Prox_{\sigma F*}(\bar{\mat{y}})
+    &= \argmin_{\mat{y}} \left\{
+        \frac{
+            \|\mat{y}-\bar{\mat{y}}\|^2
+        }{2\sigma} + F^*(\mat{y})
+    \right\}, \\
+    \Prox_{\tau G}(\bar{\mat{x}})
+    &= \argmin_{\mat{x}} \left\{
+        \frac{
+            \|\mat{x}-\bar{\mat{x}}\|^2
+        }{2\tau} + G(\mat{x})
+    \right\}.
+\end{align*}
+Then we have everything in place to formulate the algorithm
+\begin{align*}
+    \mat{y}^{k+1} &= \Prox_{\sigma F^*}(\mat{y}^{k} + \sigma K(\bar{\mat{x}^{k}})), \\
+    \mat{x}^{k+1} &= \Prox_{\tau G}(\mat{x}^{k} - \tau K^*(\mat{y}^{k+1})), \\
+    \bar{\mat{x}}^{k+1} &= \mat{x}^{k+1} + \theta(\mat{x}^{k+1}-\mat{x}^{k}).
+\end{align*}
+
+We denote the Frobenius- or euclidean norm by $\|\cdot\|_{2}$ and the
+Schatten-$p$-norms by $\|\cdot\|_{\sigma,p}$.
+Furthermore, we write $e = (1,\dots,1)$.
