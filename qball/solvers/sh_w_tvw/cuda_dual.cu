@@ -17,12 +17,15 @@ __global__ void linop1(double *x, double *ygrad)
 
     SUBVAR_x_u(u,x)
     SUBVAR_x_w(w,x)
-    SUBVAR_x_w0(w0,x)
+    SUBVAR_y_q0(q0grad,ygrad)
     SUBVAR_y_g(ggrad,ygrad)
     SUBVAR_y_p(pgrad,ygrad)
-    SUBVAR_y_q0(q0grad,ygrad)
+
+#if 'W' == dataterm
+    SUBVAR_x_w0(w0,x)
     SUBVAR_y_p0(p0grad,ygrad)
     SUBVAR_y_g0(g0grad,ygrad)
+#endif
 
     // global thread index
     int _mj = blockIdx.x*blockDim.x + threadIdx.x;
@@ -136,7 +139,6 @@ __global__ void linop2(double *x, double *ygrad)
     SUBVAR_x_v(v,x)
     SUBVAR_y_p(pgrad,ygrad)
     SUBVAR_y_q1(q1grad,ygrad)
-    SUBVAR_y_p0(p0grad,ygrad)
 
     // global thread index
     int k = blockIdx.x*blockDim.x + threadIdx.x;
@@ -149,7 +151,7 @@ __global__ void linop2(double *x, double *ygrad)
 
     // iteration variable and misc.
     int aa, base, idx;
-    double newval;
+    double newval, fac;
 
     // skip points on "bottom right" boundary
     int is_boundary = false;
@@ -165,12 +167,13 @@ __global__ void linop2(double *x, double *ygrad)
     // pgrad[k,t,i]
     idx = k*nd_skip + t*n_image + i;
     newval = pgrad[idx];
+    fac = b[k]/(double)navgskips;
 
     // pgrad += diag(b) D u (D is the gradient on a staggered grid)
     if (!is_boundary) {
         for (aa = 0; aa < navgskips; aa++) {
             base = i + avgskips[t*navgskips + aa];
-            newval += b[k]/(double)navgskips * (
+            newval += fac*(
                 u[k*n_image + (base + skips[t])] - u[k*n_image + base]
             );
         }
@@ -189,6 +192,8 @@ __global__ void linop2(double *x, double *ygrad)
         q1grad[idx] = newval;
 
 #if 'W' == dataterm
+        SUBVAR_y_p0(p0grad,ygrad)
+
         // p0grad[k,i]
         idx = k*n_image + i;
         newval = p0grad[idx];
@@ -256,7 +261,6 @@ __global__ void prox_dual2(double *y, double sigma)
      */
 
     SUBVAR_y_g(g,y)
-    SUBVAR_y_g0(g0,y)
 
 #if (d_image <= s_manifold)
 // A := gij, a (d_image x s_manifold)-matrix
@@ -358,6 +362,7 @@ __global__ void prox_dual2(double *y, double sigma)
     }
 #endif
 #if 'W' == dataterm
+    SUBVAR_y_g0(g0,y)
     gij = &g0[i*sm_skip + j*s_manifold];
     norm = 0.0;
 

@@ -40,12 +40,12 @@ class MyPDHGModel(PDHGModelHARDI):
             """ Computes the cost vector from the reference image. """
             s = np.zeros((l_labels, n_image), order='C')
             f_flat = c['f'].reshape(l_labels, n_image)
-            for i in range(n_image):
-                for k1 in range(l_labels):
-                    # s_ki = \sum_l 0.5 * b^l * f_i^l * dist(z^l, z^k)^2
-                    for k2 in range(l_labels):
-                        s[k1,i] += b_sph.b[k2]*f_flat[k2,i]*0.5*\
-                            b_sph.dist(b_sph.v[:,k2], b_sph.v[:,k1])**2
+            b_sph = e['b_sph']
+            for k1 in range(l_labels):
+                # s_ki = \sum_l 0.5 * b^l * f_i^l * dist(z^l, z^k)^2
+                for k2 in range(l_labels):
+                    s[k1,:] += c['b'][k2]*f_flat[k2,:]*0.5*\
+                        b_sph.dist(b_sph.v[:,k2], b_sph.v[:,k1])**2
             c['f'] = s
         elif dataterm == "linear-precalc":
             """ Nothing to do, the provided f is the cost vector. """
@@ -61,20 +61,6 @@ class MyPDHGModel(PDHGModelHARDI):
 
         c['dataterm']= dataterm
         self.gpu_constvars['dataterm']= dataterm[0].upper()
-
-        self.cuda_templates = [
-            ("PrimalKernel1", (l_labels, 1, 1), (16, 1, 1)),
-            ("PrimalKernel2", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-            ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1)),
-            ("DualKernel1", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-            ("DualKernel2", (l_labels, n_image, d_image), (16, 16, 1)),
-            ("DualKernel3", (n_image, m_gradients, 1), (16, 16, 1)),
-        ]
-        from pkg_resources import resource_stream
-        self.cuda_files = [
-            resource_stream('qball.solvers.n_w_tvw', 'cuda_primal.cu'),
-            resource_stream('qball.solvers.n_w_tvw', 'cuda_dual.cu'),
-        ]
 
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 
@@ -104,6 +90,51 @@ class MyPDHGModel(PDHGModelHARDI):
                          l_labels=l_labels,
                          imagedims="x".join(map(str,imagedims)),
                          dataterm=dataterm))
+
+    def prepare_gpu(self):
+        c = self.constvars
+        n_image = c['n_image']
+        d_image = c['d_image']
+        l_labels = c['l_labels']
+        s_manifold = c['s_manifold']
+        m_gradients = c['m_gradients']
+
+        prox_sg= "PP" if 'precond' in c else "Pd"
+        self.cuda_templates = [
+            ("prox_primal", prox_sg, (n_image, l_labels, 1), (16, 16, 1)),
+            ("prox_dual1", prox_sg, (n_image, l_labels, 1), (16, 16, 1)),
+            ("prox_dual2", prox_sg, (n_image, m_gradients, 1), (16, 16, 1)),
+            ("linop1", "PP", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("linop2", "PP", (l_labels, n_image, d_image), (16, 16, 1)),
+            ("linop_adjoint1", "PP", (l_labels, 1, 1), (512, 1, 1)),
+            ("linop_adjoint2", "PP", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("linop_adjoint3", "PP", (n_image, l_labels, 1), (16, 16, 1)),
+        ]
+
+        from pkg_resources import resource_stream
+        self.cuda_files = [
+            resource_stream('qball.solvers.n_w_tvw', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.n_w_tvw', 'cuda_dual.cu'),
+        ]
+
+        PDHGModelHARDI.prepare_gpu(self)
+
+        def gpu_kernels_linop(*args):
+            self.cuda_kernels['linop1'](*args)
+            self.cuda_kernels['linop2'](*args)
+        self.gpu_kernels['linop'] = gpu_kernels_linop
+
+        def gpu_kernels_linop_adjoint(*args):
+            self.cuda_kernels['linop_adjoint1'](*args)
+            self.cuda_kernels['linop_adjoint2'](*args)
+            self.cuda_kernels['linop_adjoint3'](*args)
+        self.gpu_kernels['linop_adjoint'] = gpu_kernels_linop_adjoint
+
+        self.gpu_kernels['prox_primal'] = self.cuda_kernels['prox_primal']
+        def gpu_kernels_prox_dual(*args):
+            self.cuda_kernels['prox_dual1'](*args)
+            self.cuda_kernels['prox_dual2'](*args)
+        self.gpu_kernels['prox_dual'] = gpu_kernels_prox_dual
 
     def obj_primal(self, x, ygrad):
         # ygrad is precomputed via self.linop(x, ygrad)
@@ -149,9 +180,8 @@ class MyPDHGModel(PDHGModelHARDI):
 
     def obj_dual(self, xgrad, y):
         # xgrad is precomputed via self.linop_adjoint(xgrad, y)
-        #   ugrad = b q' + diag(b) s + diag(b) D' p (linear)
-        #   ugrad = b q' - diag(b) f + diag(b) D' p (quadratic)
-        #   ugrad = b q' + diag(b) p0 + diag(b) D' p (W1)
+        #   ugrad = b q' + diag(b) D' p (linear, quadratic)
+        #   ugrad = b q' + diag(b) D' p + diag(b) p0 (W1)
         #   wgrad = Ag - BPp
         #   w0grad = Ag0 - BPp0 (W1)
         p, g, q, p0, g0 = y.vars()
@@ -161,15 +191,15 @@ class MyPDHGModel(PDHGModelHARDI):
         l_labels = ugrad.shape[0]
 
         if c['dataterm'] == "linear":
-            # obj_d = -\sum_i q_i + \sum_i\min_k[ugrad_k^i]
-            result = np.sum(np.amin(ugrad[:,np.logical_not(c['uconstrloc'])],axis=0)) \
-                    + np.sum(np.sum(c['constraint_u'][:,c['uconstrloc']]*ugrad[:,c['uconstrloc']], axis=0))
+            # obj_d = -\sum_i q_i
+            result = 0.0
         elif c['dataterm'] == "quadratic":
             # obj_d = -\sum_i q_i + 0.5*b*[f^2 - min(0, q + D'p - f)^2]
             f_flat = c['f'].reshape(l_labels, -1)
             u_flat = ugrad.reshape(l_labels, -1)
+            umf_flat = u_flat - np.einsum('k,ki->ki', c['b'], f_flat)
             result = np.einsum('k,ki->', 0.5*c['b'], f_flat**2) \
-                    - np.einsum('k,ki->', 0.5/c['b'], np.fmin(0.0, u_flat)**2)
+                    - np.einsum('k,ki->', 0.5/c['b'], np.fmin(0.0, umf_flat)**2)
         elif c['dataterm'] == "W1":
             # obj_d = -\sum_i q_i - <f,p0>_b
             f_flat = c['f'].reshape(l_labels, -1)
@@ -179,19 +209,63 @@ class MyPDHGModel(PDHGModelHARDI):
         obj_d = -np.sum(q)*c['b_precond'] + result
 
         norms_spectral(g, e['g_norms'])
+        # infeas_d = |Ag - BPp| + |max(0, |g| - lbd)|
         infeas_d = norm(wgrad.ravel(), ord=np.inf) \
                  + norm(np.fmax(0.0, e['g_norms'] - c['lbd']), ord=np.inf)
         if c['dataterm'] == "W1":
-            # infeas_d = |Ag - BPp| + |Ag0 - BPp0|
-            #          + |max(0, |g| - lbd)| + |max(0, |g0| - 1.0)|
-            #          + |max(0, -ugrad)|
+            # infeas_d += |Ag0 - BPp0| + |max(0, |g0| - 1.0)| + |max(0, -ugrad)|
             g0_norms = e['g_norms'].copy()
             norms_spectral(g0[:,:,:,np.newaxis], g0_norms)
             infeas_d += norm(w0grad.ravel(), ord=np.inf) \
                      + norm(np.fmax(0.0, g0_norms - 1.0), ord=np.inf) \
                      + norm(np.fmax(0.0, -ugrad.ravel()), ord=np.inf)
+        elif c['dataterm'] == "linear":
+            # infeas_d += |max(0, -ugrad - diag(b) s)|
+            diagb_s = np.einsum('k,ki->ki', c['b'], c['f']).ravel()
+            infeas_d += norm(np.fmax(0.0, -ugrad.ravel() - diagb_s), ord=np.inf)
 
         return obj_d, infeas_d
+
+    def precond(self, x, y):
+        u, w, w0 = x.vars()
+        p, g, q, p0, g0 = y.vars()
+        u_flat = u.reshape(u.shape[0], -1)
+        c = self.constvars
+        x[:] = 0.0
+        y[:] = 0.0
+
+        # p += diag(b) D u (D is the gradient on a staggered grid)
+        # p_t^i += -P^j' B^j' w_t^ij
+        # g^ij = A^j' w^ij
+        # q = b'u
+        # p0 = diag(b) u (W1)
+        # p0^i += - P^j' B^j' w0^ij (W1)
+        # g0^ij += A^j' w0^ij (W1)
+        gradient(p, u, c['b'], c['avgskips'], precond=True)
+        apply_PB(p, c['P'], c['B'], w, precond=True)
+        g += norm(c['A'], ord=1, axis=1)[None,:,:,None]
+        q += c['b_precond']*norm(c['b'], ord=1)
+        if c['dataterm'] == "W1":
+            p0 += np.abs(c['b'])[:,None]
+            apply_PB(p0[:,None,:], c['P'], c['B'], w0[:,:,:,None], precond=True)
+            g0 += norm(c['A'], ord=1, axis=1)[None,:,:]
+        y[y.data > np.spacing(1)] = 1.0/y[y.data > np.spacing(1)]
+
+        # u = b q'
+        # u += diag(b) p0 (W1)
+        # w0^ij = A^j g0^ij - B^j P^j p0^i (W1)
+        # u += diag(b) D' p (where D' = -div with Dirichlet boundary)
+        # v = Y'q1
+        # w^ij = A^j g^ij - B^j P^j p_t^i
+        u_flat += c['b_precond']*np.abs(c['b'])[:,None]
+        if c['dataterm'] == "W1":
+            u_flat += np.abs(c['b'])[:,None]
+            w0 += norm(c['A'], ord=1, axis=2)[None,:,:]
+            w0 += norm(c['B'], ord=1, axis=2)[None,:,:]
+        divergence(p, u, c['b'], c['avgskips'], precond=True)
+        w += norm(c['A'], ord=1, axis=2)[None,:,:,None]
+        w += norm(c['B'], ord=1, axis=2)[None,:,:,None]
+        x[x.data > np.spacing(1)] = 1.0/x[x.data > np.spacing(1)]
 
     def linop(self, x, ygrad):
         """ Apply the linear operator in the model to x.
@@ -222,7 +296,7 @@ class MyPDHGModel(PDHGModelHARDI):
         np.einsum('jlm,ijlt->ijmt', c['A'], w, out=ggrad)
 
         # qgrad = b'u
-        np.einsum('i,ij->j', c['b'], u.reshape(l_labels, n_image), out=qgrad)
+        np.einsum('k,ki->i', c['b'], u.reshape(l_labels, n_image), out=qgrad)
         qgrad *= c['b_precond']
 
         if c['dataterm'] == "W1":
@@ -254,14 +328,7 @@ class MyPDHGModel(PDHGModelHARDI):
         ugrad_flat = ugrad.reshape(l_labels, -1)
         np.einsum('k,i->ki', c['b'], c['b_precond']*q, out=ugrad_flat)
 
-        if c['dataterm'] == "linear":
-            # ugrad += diag(b) f (where f=s)
-            ugrad_flat += np.einsum('k,ki->ki', c['b'], c['f'])
-        elif c['dataterm'] == "quadratic":
-            # ugrad -= diag(b) f
-            f_flat = c['f'].reshape(l_labels, -1)
-            ugrad_flat -= np.einsum('k,ki->ki', c['b'], f_flat)
-        elif c['dataterm'] == "W1":
+        if c['dataterm'] == "W1":
             # ugrad += diag(b) p0
             ugrad_flat += np.einsum('k,ki->ki', c['b'], p0)
 
@@ -284,8 +351,26 @@ class MyPDHGModel(PDHGModelHARDI):
         u = x['u']
         c = self.constvars
 
-        if c['dataterm'] == "quadratic":
-            u[:] = np.einsum('k,k...->k...', 1.0/(1.0 + tau*c['b']), u)
+        if c['dataterm'] == "linear":
+            l_labels = c['l_labels']
+            u_flat = u.reshape(l_labels, -1)
+            if 'precond' in c:
+                tau_u_flat = tau['u'].reshape(l_labels, -1)
+                u_flat -= tau_u_flat*np.einsum('k,ki->ki', c['b'], c['f'])
+            else:
+                u_flat -= tau*np.einsum('k,ki->ki', c['b'], c['f'])
+        elif c['dataterm'] == "quadratic":
+            l_labels = c['l_labels']
+            u_flat = u.reshape(l_labels, -1)
+            f_flat = c['f'].reshape(l_labels, -1)
+            if 'precond' in c:
+                tau_u_flat = tau['u'].reshape(l_labels, -1)
+                u_flat += tau_u_flat*np.einsum('k,ki->ki', c['b'], f_flat)
+                u_flat *= 1.0/(1.0 + tau_u_flat*c['b'][:,None])
+            else:
+                u_flat += tau*np.einsum('k,ki->ki', c['b'], f_flat)
+                u_flat *= 1.0/(1.0 + tau*c['b'][:,None])
+
         u[:] = np.fmax(0.0, u)
         u[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
@@ -296,6 +381,13 @@ class MyPDHGModel(PDHGModelHARDI):
         f_flat = c['f'].reshape(c['f'].shape[0], -1)
 
         project_gradients(g, c['lbd'], e['g_norms'])
-        q -= sigma*c['b_precond']
-        p0 -= sigma*np.einsum('k,ki->ki', c['b'], f_flat)
-        project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])
+        if 'precond' in c:
+            q -= sigma['q'][:]*c['b_precond']
+        else:
+            q -= sigma*c['b_precond']
+        if c['dataterm'] == "W1":
+            if 'precond' in c:
+                p0 -= sigma['p0']*np.einsum('k,ki->ki', c['b'], f_flat)
+            else:
+                p0 -= sigma*np.einsum('k,ki->ki', c['b'], f_flat)
+            project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])

@@ -37,6 +37,7 @@ class MyPDHGModel(PDHGModelHARDI):
         c['Y'][:] = sampling_matrix
         l_shm = c['Y'].shape[1]
         c['l_shm'] = l_shm
+
         c['M'] = model_matrix
         assert(model_matrix.size == l_shm)
 
@@ -47,21 +48,6 @@ class MyPDHGModel(PDHGModelHARDI):
             c['constraint_u'] = constraint_u
         uconstrloc = np.any(np.logical_not(np.isnan(c['constraint_u'])), axis=0)
         c['uconstrloc'] = uconstrloc
-
-        self.cuda_templates = [
-            ("PrimalKernel1", (l_labels, 1, 1), (16, 1, 1)),
-            ("PrimalKernel2", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-            ("PrimalKernel3", (n_image, l_labels, 1), (16, 16, 1)),
-            ("PrimalKernel4", (n_image, l_shm, 1), (16, 16, 1)),
-            ("DualKernel1", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
-            ("DualKernel2", (l_labels, n_image, d_image), (16, 16, 1)),
-            ("DualKernel3", (n_image, m_gradients, 1), (16, 16, 1)),
-        ]
-        from pkg_resources import resource_stream
-        self.cuda_files = [
-            resource_stream('qball.solvers.sh_l_tvw', 'cuda_primal.cu'),
-            resource_stream('qball.solvers.sh_l_tvw', 'cuda_dual.cu'),
-        ]
 
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 
@@ -94,6 +80,48 @@ class MyPDHGModel(PDHGModelHARDI):
                          l_labels=l_labels,
                          l_shm=l_shm,
                          imagedims="x".join(map(str,imagedims))))
+
+    def prepare_gpu(self):
+        c = self.constvars
+        n_image = c['n_image']
+        d_image = c['d_image']
+        l_labels = c['l_labels']
+        s_manifold = c['s_manifold']
+        m_gradients = c['m_gradients']
+        l_shm = c['l_shm']
+
+        prox_sg= "PP" if 'precond' in c else "Pd"
+        self.cuda_templates = [
+            ("prox_primal", prox_sg, (n_image, l_labels, 1), (16, 16, 1)),
+            ("prox_dual", prox_sg, (n_image, m_gradients, 1), (16, 16, 1)),
+            ("linop1", "PP", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("linop2", "PP", (l_labels, n_image, d_image), (16, 16, 1)),
+            ("linop_adjoint1", "PP", (l_labels, 1, 1), (512, 1, 1)),
+            ("linop_adjoint2", "PP", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
+            ("linop_adjoint3", "PP", (n_image, l_labels, l_shm), (16, 8, 2)),
+        ]
+
+        from pkg_resources import resource_stream
+        self.cuda_files = [
+            resource_stream('qball.solvers.sh_l_tvw', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.sh_l_tvw', 'cuda_dual.cu'),
+        ]
+
+        PDHGModelHARDI.prepare_gpu(self)
+
+        def gpu_kernels_linop(*args):
+            self.cuda_kernels['linop1'](*args)
+            self.cuda_kernels['linop2'](*args)
+        self.gpu_kernels['linop'] = gpu_kernels_linop
+
+        def gpu_kernels_linop_adjoint(*args):
+            self.cuda_kernels['linop_adjoint1'](*args)
+            self.cuda_kernels['linop_adjoint2'](*args)
+            self.cuda_kernels['linop_adjoint3'](*args)
+        self.gpu_kernels['linop_adjoint'] = gpu_kernels_linop_adjoint
+
+        self.gpu_kernels['prox_primal'] = self.cuda_kernels['prox_primal']
+        self.gpu_kernels['prox_dual'] = self.cuda_kernels['prox_dual']
 
     def obj_primal(self, x, ygrad):
         # ygrad is precomputed via self.linop(x, ygrad)
@@ -150,6 +178,42 @@ class MyPDHGModel(PDHGModelHARDI):
 
         return obj_d, infeas_d
 
+    def precond(self, x, y):
+        u1, u2, v, w = x.vars()
+        p, g, q0, q1, q2 = y.vars()
+        u1_flat = u1.reshape(u1.shape[0], -1)
+        c = self.constvars
+        x[:] = 0.0
+        y[:] = 0.0
+
+        # p += diag(b) D u1 (D is the gradient on a staggered grid)
+        # p_t^i += -P^j' B^j' w_t^ij
+        # g^ij = A^j' w^ij
+        # q0 = b'u1
+        # q1 = Yv - u1
+        # q2 = YMv - u2
+        gradient(p, u1, c['b'], c['avgskips'], precond=True)
+        apply_PB(p, c['P'], c['B'], w, precond=True)
+        g += norm(c['A'], ord=1, axis=1)[None,:,:,None]
+        q0 += c['b_precond']*norm(c['b'], ord=1)
+        q1 += norm(c['Y'], ord=1, axis=1)[:,None] + 1.0
+        q2 += norm(np.einsum('km,m->km', c['Y'], c['M']), ord=1, axis=1)[:,None] + 1.0
+        y[y.data > np.spacing(1)] = 1.0/y[y.data > np.spacing(1)]
+
+        # u1 = b q0' - q1
+        # u1 += diag(b) D' p (where D' = -div with Dirichlet boundary)
+        # u2 = -q2
+        # v = Y'q1 + M Y'q2
+        # w^ij = A^j g^ij - B^j P^j p_t^i
+        u1_flat += c['b_precond']*np.abs(c['b'])[:,None] + 1.0
+        divergence(p, u1, c['b'], c['avgskips'], precond=True)
+        u2 += 1.0
+        v += norm(c['Y'], ord=1, axis=0)[:,None]
+        v += norm(np.einsum('m,km->km', c['M'], c['Y']), ord=1, axis=0)[:,None]
+        w += norm(c['A'], ord=1, axis=2)[None,:,:,None]
+        w += norm(c['B'], ord=1, axis=2)[None,:,:,None]
+        x[x.data > np.spacing(1)] = 1.0/x[x.data > np.spacing(1)]
+
     def linop(self, x, ygrad):
         """ Apply the linear operator in the model to x.
 
@@ -180,7 +244,7 @@ class MyPDHGModel(PDHGModelHARDI):
         np.einsum('jlm,ijlt->ijmt', c['A'], w, out=ggrad)
 
         # q0grad = b'u1
-        np.einsum('i,ij->j', c['b'], u1.reshape(l_labels, n_image), out=q0grad)
+        np.einsum('k,ki->i', c['b'], u1.reshape(l_labels, n_image), out=q0grad)
         q0grad *= c['b_precond']
 
         # q1grad = Yv - u1
@@ -235,8 +299,12 @@ class MyPDHGModel(PDHGModelHARDI):
         u2 = x['u2']
         c = self.constvars
 
-        u2 += tau*np.einsum('k,ki->ki', c['b'], c['f'])
-        u2[:] = np.einsum('k,k...->k...', 1.0/(1.0 + tau*c['b']), u2)
+        if 'precond' in c:
+            u2 += tau['u2'][:]*np.einsum('k,ki->ki', c['b'], c['f'])
+            u2 *= 1.0/(1.0 + tau['u2']*c['b'][:,None])
+        else:
+            u2 += tau*np.einsum('k,ki->ki', c['b'], c['f'])
+            u2[:] = np.einsum('k,k...->k...', 1.0/(1.0 + tau*c['b']), u2)
         u1[:] = np.fmax(0.0, u1)
         u1[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
@@ -246,4 +314,7 @@ class MyPDHGModel(PDHGModelHARDI):
         e = self.extravars
 
         project_gradients(g, c['lbd'], e['g_norms'])
-        q0 -= sigma*c['b_precond']
+        if 'precond' in c:
+            q0 -= sigma['q0'][:]*c['b_precond']
+        else:
+            q0 -= sigma*c['b_precond']

@@ -1,50 +1,4 @@
 
-#ifdef precond
-__global__ void prox_primal(double *x, double *xtau)
-#else
-__global__ void prox_primal(double *x, double tau)
-#endif
-{
-    /* u = 1/(1 + tau*diag(b))*(u + diag(b) f) (quadratic)
-     * u[~uconstrloc] = max(0, u)
-     * u[uconstrloc] = constraint_u[uconstrloc]
-     */
-
-    SUBVAR_x_u(u,x)
-
-    // global thread index
-    int i = blockIdx.x*blockDim.x + threadIdx.x;
-    int k = blockIdx.y*blockDim.y + threadIdx.y;
-
-    // stay inside maximum dimensions
-    if (i >= n_image || k >= l_labels)
-       return;
-
-    // u[k,i]
-    int idx = k*n_image + i;
-    double newval;
-
-#ifdef precond
-    SUBVAR_x_u(utau,xtau)
-    double tau = utau[idx];
-#endif
-
-    if (uconstrloc[i]) {
-        // u[uconstrloc] = constraint_u[uconstrloc]
-        newval = constraint_u[idx];
-    } else {
-        // ~uconstrloc
-        newval = u[idx];
-#if 'Q' == dataterm
-        // u = 1/(1 + tau*diag(b))*(u + diag(b) f)
-        newval = 1.0/(1.0 + tau*b[k])*(newval + b[k]*f[idx]);
-#endif
-        // u = max(0, u)
-        newval = fmax(0.0,  newval);
-    }
-    u[idx] = newval;
-}
-
 __global__ void linop_adjoint1(double *xgrad, double *y)
 {
     /* ugrad = 0
@@ -63,6 +17,7 @@ __global__ void linop_adjoint1(double *xgrad, double *y)
 
     // iteration variables and misc.
     int ii, aa, tt, is_boundary, curr_dim, curr_i, base;
+    double fac = b[k]/(double)navgskips;
 
     // ugrad = 0
     for (ii = 0; ii < n_image; ii++) {
@@ -87,9 +42,9 @@ __global__ void linop_adjoint1(double *xgrad, double *y)
                 for (aa = 0; aa < navgskips; aa++) {
                     base = ii + avgskips[tt*navgskips + aa];
                     ugrad[k*n_image + (base + skips[tt])] +=
-                        b[k]/(double)navgskips * p[k*nd_skip + tt*n_image + ii];
+                        fac*p[k*nd_skip + tt*n_image + ii];
                     ugrad[k*n_image + base] -=
-                        b[k]/(double)navgskips * p[k*nd_skip + tt*n_image + ii];
+                        fac*p[k*nd_skip + tt*n_image + ii];
                 }
             }
         }
@@ -103,11 +58,8 @@ __global__ void linop_adjoint2(double *xgrad, double *y)
      */
 
     SUBVAR_x_w(wgrad,xgrad)
-    SUBVAR_x_w0(w0grad,xgrad)
     SUBVAR_y_p(p,y)
     SUBVAR_y_g(g,y)
-    SUBVAR_y_p0(p0,y)
-    SUBVAR_y_g0(g0,y)
 
     // global thread index
     int _lj = blockIdx.x*blockDim.x + threadIdx.x;
@@ -146,6 +98,10 @@ __global__ void linop_adjoint2(double *xgrad, double *y)
 
 #if 'W' == dataterm
     if (t == 0) {
+        SUBVAR_x_w0(w0grad,xgrad)
+        SUBVAR_y_p0(p0,y)
+        SUBVAR_y_g0(g0,y)
+
         // w0grad[i,j,l]
         idx = i*sm_skip + j*s_manifold + l;
         newval = 0.0;
@@ -179,7 +135,6 @@ __global__ void linop_adjoint3(double *xgrad, double *y)
     SUBVAR_x_v(vgrad,xgrad)
     SUBVAR_y_q0(q0,y)
     SUBVAR_y_q1(q1,y)
-    SUBVAR_y_p0(p0,y)
 
     // global thread index
     int i = blockIdx.x*blockDim.x + threadIdx.x;
@@ -203,6 +158,7 @@ __global__ void linop_adjoint3(double *xgrad, double *y)
         newval += b[k]*(b_precond*q0[i]);
         newval -= q1[idx];
 #if 'W' == dataterm
+        SUBVAR_y_p0(p0,y)
         // ugrad += diag(b) p0
         newval += b[k]*p0[idx];
 #endif
@@ -221,4 +177,50 @@ __global__ void linop_adjoint3(double *xgrad, double *y)
         }
         vgrad[idx] = newval;
     }
+}
+
+#ifdef precond
+__global__ void prox_primal(double *x, double *xtau)
+#else
+__global__ void prox_primal(double *x, double tau)
+#endif
+{
+    /* u = 1/(1 + tau*diag(b))*(u + tau*diag(b) f) (quadratic)
+     * u[~uconstrloc] = max(0, u)
+     * u[uconstrloc] = constraint_u[uconstrloc]
+     */
+
+    SUBVAR_x_u(u,x)
+
+    // global thread index
+    int i = blockIdx.x*blockDim.x + threadIdx.x;
+    int k = blockIdx.y*blockDim.y + threadIdx.y;
+
+    // stay inside maximum dimensions
+    if (i >= n_image || k >= l_labels)
+       return;
+
+    // u[k,i]
+    int idx = k*n_image + i;
+    double newval;
+
+
+    if (uconstrloc[i]) {
+        // u[uconstrloc] = constraint_u[uconstrloc]
+        newval = constraint_u[idx];
+    } else {
+        // ~uconstrloc
+        newval = u[idx];
+#if 'Q' == dataterm
+#ifdef precond
+        SUBVAR_x_u(utau,xtau)
+        double tau = utau[idx];
+#endif
+        // u = 1/(1 + tau*diag(b))*(u + diag(b) f)
+        newval = 1.0/(1.0 + tau*b[k])*(newval + tau*b[k]*f[idx]);
+#endif
+        // u = max(0, u)
+        newval = fmax(0.0,  newval);
+    }
+    u[idx] = newval;
 }

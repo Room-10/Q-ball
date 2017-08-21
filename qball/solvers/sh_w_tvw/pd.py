@@ -104,7 +104,7 @@ class MyPDHGModel(PDHGModelHARDI):
             ("prox_dual2", prox_sg, (n_image, m_gradients, 1), (16, 16, 1)),
             ("linop1", "PP", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
             ("linop2", "PP", (l_labels, n_image, d_image), (16, 16, 1)),
-            ("linop_adjoint1", "PP", (l_labels, 1, 1), (16, 1, 1)),
+            ("linop_adjoint1", "PP", (l_labels, 1, 1), (512, 1, 1)),
             ("linop_adjoint2", "PP", (s_manifold*m_gradients, n_image, d_image), (16, 16, 1)),
             ("linop_adjoint3", "PP", (n_image, l_labels, l_shm), (16, 8, 2)),
         ]
@@ -191,8 +191,9 @@ class MyPDHGModel(PDHGModelHARDI):
             # obj_d = -\sum_i q0_i + 0.5*b*[f^2 - min(0, q0 + D'p - f)^2]
             f_flat = c['f'].reshape(l_labels, -1)
             u_flat = ugrad.reshape(l_labels, -1)
+            umf_flat = u_flat - np.einsum('k,ki->ki', c['b'], f_flat)
             result = np.einsum('k,ki->', 0.5*c['b'], f_flat**2) \
-                    - np.einsum('k,ki->', 0.5/c['b'], np.fmin(0.0, u_flat)**2)
+                    - np.einsum('k,ki->', 0.5/c['b'], np.fmin(0.0, umf_flat)**2)
         elif c['dataterm'] == "W1":
             # obj_d = -\sum_i q0_i - <f,p0>_b
             f_flat = c['f'].reshape(l_labels, -1)
@@ -202,23 +203,17 @@ class MyPDHGModel(PDHGModelHARDI):
         obj_d = -np.sum(q0)*c['b_precond'] + result
 
         norms_spectral(g, e['g_norms'])
-        if c['dataterm'] == "quadratic":
-            # infeas_d = |Y'q1| + |Ag - BPp| + |max(0, |g| - lbd)|
-            infeas_d = norm(vgrad.ravel(), ord=np.inf) \
-                    + norm(wgrad.ravel(), ord=np.inf) \
-                    + norm(np.fmax(0, e['g_norms'] - c['lbd']), ord=np.inf)
-        elif c['dataterm'] == "W1":
-            # infeas_d = |Y'q1| + |Ag - BPp| + |Ag0 - BPp0|
-            #          + |max(0, |g| - lbd)| + |max(0, |g0| - 1.0)|
-            #          + |max(0, -ugrad)|
+        # infeas_d = |Y'q1| + |Ag - BPp| + |max(0, |g| - lbd)|
+        infeas_d = norm(vgrad.ravel(), ord=np.inf) \
+                 + norm(wgrad.ravel(), ord=np.inf) \
+                 + norm(np.fmax(0, e['g_norms'] - c['lbd']), ord=np.inf)
+        if c['dataterm'] == "W1":
+            # infeas_d = |Ag0 - BPp0| + |max(0, |g0| - 1.0)| + |max(0, -ugrad)|
             g0_norms = e['g_norms'].copy()
             norms_spectral(g0[:,:,:,np.newaxis], g0_norms)
-            infeas_d = norm(vgrad.ravel(), ord=np.inf) \
-                    + norm(wgrad.ravel(), ord=np.inf) \
-                    + norm(w0grad.ravel(), ord=np.inf) \
-                    + norm(np.fmax(0.0, e['g_norms'] - c['lbd']), ord=np.inf) \
-                    + norm(np.fmax(0.0, g0_norms - 1.0), ord=np.inf) \
-                    + norm(np.fmax(0.0, -ugrad.ravel()), ord=np.inf)
+            infeas_d += norm(w0grad.ravel(), ord=np.inf) \
+                     + norm(np.fmax(0.0, g0_norms - 1.0), ord=np.inf) \
+                     + norm(np.fmax(0.0, -ugrad.ravel()), ord=np.inf)
 
         return obj_d, infeas_d
 
@@ -247,7 +242,7 @@ class MyPDHGModel(PDHGModelHARDI):
             p0 += np.abs(c['b'])[:,None]
             apply_PB(p0[:,None,:], c['P'], c['B'], w0[:,:,:,None], precond=True)
             g0 += norm(c['A'], ord=1, axis=1)[None,:,:]
-        y[:] = 1.0/y[:]
+        y[y.data > np.spacing(1)] = 1.0/y[y.data > np.spacing(1)]
 
         # u = b q0' - q1
         # u += diag(b) p0 (W1)
@@ -264,7 +259,7 @@ class MyPDHGModel(PDHGModelHARDI):
         v += norm(c['Y'], ord=1, axis=0)[:,None]
         w += norm(c['A'], ord=1, axis=2)[None,:,:,None]
         w += norm(c['B'], ord=1, axis=2)[None,:,:,None]
-        x[:] = 1.0/x[:]
+        x[x.data > np.spacing(1)] = 1.0/x[x.data > np.spacing(1)]
 
     def linop(self, x, ygrad):
         """ Apply the linear operator in the model to x.
@@ -361,12 +356,17 @@ class MyPDHGModel(PDHGModelHARDI):
         c = self.constvars
 
         if c['dataterm'] == "quadratic":
-            f_flat = c['f'].reshape(c['f'].shape[0], -1)
+            l_labels = c['l_labels']
+            u_flat = u.reshape(l_labels, -1)
+            f_flat = c['f'].reshape(l_labels, -1)
             if 'precond' in c:
-                u[:] += tau['u'][:]*np.einsum('k,ki->ki', c['b'], f_flat)
+                tau_u_flat = tau['u'].reshape(l_labels, -1)
+                u_flat += tau_u_flat*np.einsum('k,ki->ki', c['b'], f_flat)
+                u_flat *= 1.0/(1.0 + tau_u_flat*c['b'][:,None])
             else:
-                u[:] += tau*np.einsum('k,ki->ki', c['b'], f_flat)
-            u[:] = np.einsum('k,k...->k...', 1.0/(1.0 + c['tau']*c['b']), u)
+                u_flat += tau*np.einsum('k,ki->ki', c['b'], f_flat)
+                u_flat *= 1.0/(1.0 + tau*c['b'][:,None])
+
         u[:] = np.fmax(0.0, u)
         u[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 

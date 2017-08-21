@@ -1,13 +1,11 @@
 
-__global__ void DualKernel1(KERNEL_PARAMS)
+__global__ void linop1(double *x, double *ygrad)
 {
-    /* pkp1 = D vbark (D is the gradient on a staggered grid)
-     * pkp1 = pk + sigma*pkp1
+    /* pgrad = D v (D is the gradient on a staggered grid)
      */
 
-    SUBVAR_vbark
-    SUBVAR_pk
-    SUBVAR_pkp1
+    SUBVAR_x_v(v,x)
+    SUBVAR_y_p(pgrad,ygrad)
 
     // global thread index
     int k = blockIdx.x*blockDim.x + threadIdx.x;
@@ -36,49 +34,34 @@ __global__ void DualKernel1(KERNEL_PARAMS)
 
     newval = 0.0;
     fac = 1.0/(double)navgskips;
+
+    // pgrad = D v (D is the gradient on a staggered grid)
     if(!is_boundary) {
         for(aa = 0; aa < navgskips; aa++) {
             base = i + avgskips[t*navgskips + aa];
-            newval +=  fac * (
-                vbark[k*n_image + (base + skips[t])] - vbark[k*n_image + base]
+            newval +=  fac*(
+                v[k*n_image + (base + skips[t])] - v[k*n_image + base]
             );
         }
     }
-
-    newval = pk[k*nd_skip + t*n_image + i] + sigma*newval;
-    pkp1[k*nd_skip + t*n_image + i] = newval;
-    pk[k*nd_skip + t*n_image + i] = newval;
+    pgrad[k*nd_skip + t*n_image + i] = newval;
 }
 
-__global__ void DualKernel2(KERNEL_PARAMS)
+__global__ void linop2(double *x, double *ygrad)
 {
-    /* q1kp1 = Y vbark - u1bark
-     * q1kp1 = q1k + sigma*q1kp1
-     * q1k = q1kp1
+    /* q0grad = b'u1
      *
-     * q2kp1 = Y M vbark - u2bark
-     * q2kp1 = q2k + sigma*q2kp1
-     * q2k = q2kp1
+     * q1grad = Yv - u1
      *
-     * q0kp1 = b'u1bark - 1
-     * q0kp1 = q0k + sigma*q0kp1
-     * q0k = q0kp1
-     *
-     * pkp1 = proj(pkp1, lbd)
-     * pk = pkp1
+     * q2grad = YMv - u2
      */
 
-    SUBVAR_u1bark
-    SUBVAR_u2bark
-    SUBVAR_vbark
-    SUBVAR_pk
-    SUBVAR_pkp1
-    SUBVAR_q0k
-    SUBVAR_q0kp1
-    SUBVAR_q1k
-    SUBVAR_q1kp1
-    SUBVAR_q2k
-    SUBVAR_q2kp1
+    SUBVAR_x_u1(u1,x)
+    SUBVAR_x_u2(u2,x)
+    SUBVAR_x_v(v,x)
+    SUBVAR_y_q0(q0grad,ygrad)
+    SUBVAR_y_q1(q1grad,ygrad)
+    SUBVAR_y_q2(q2grad,ygrad)
 
     // global thread index
     int k = blockIdx.x*blockDim.x + threadIdx.x;
@@ -89,56 +72,84 @@ __global__ void DualKernel2(KERNEL_PARAMS)
        return;
 
     // iteration variables and misc.
-    int mm, tt;
-    double norm, newval;
-
-    newval = -u1bark[k*n_image + i];
-    for(mm = 0; mm < l_shm; mm++) {
-        newval += Y[k*l_shm + mm]*vbark[mm*n_image + i];
-    }
-    newval = q1k[k*n_image + i] + sigma*newval;
-    q1kp1[k*n_image + i] = newval;
-    q1k[k*n_image + i] = newval;
-
-    newval = -u2bark[k*n_image + i];
-    for(mm = 0; mm < l_shm; mm++) {
-        newval += Y[k*l_shm + mm]*M[mm]*vbark[mm*n_image + i];
-    }
-    newval = q2k[k*n_image + i] + sigma*newval;
-    q2kp1[k*n_image + i] = newval;
-    q2k[k*n_image + i] = newval;
+    int mm, tt, idx;
+    double newval;
 
     if(k == 0) {
+        // q0grad = b'u1
         newval = 0.0;
         for(mm = 0; mm < l_labels; mm++) {
-            newval += b[mm]*u1bark[mm*n_image + i];
+            newval += b[mm]*u1[mm*n_image + i];
         }
-        newval = q0k[i] + sigma*b_precond*(newval - 1.0);
-        q0kp1[i] = newval;
-        q0k[i] = newval;
+        newval *= b_precond;
+        q0grad[i] = newval;
+    }
 
-        norm = 0.0;
+    // q1grad[k,i]
+    idx = k*n_image + i;
+    newval = -u1[idx];
+
+    // q1grad = Yv - u1
+    for(mm = 0; mm < l_shm; mm++) {
+        newval += Y[k*l_shm + mm]*v[mm*n_image + i];
+    }
+    q1grad[idx] = newval;
+
+    // q2grad[k,i]
+    idx = k*n_image + i;
+    newval = -u2[idx];
+
+    // q2grad = YMv - u2
+    for(mm = 0; mm < l_shm; mm++) {
+        newval += Y[k*l_shm + mm]*M[mm]*v[mm*n_image + i];
+    }
+    q2grad[idx] = newval;
+}
+
+#ifdef precond
+__global__ void prox_dual(double *y, double *ysigma)
+#else
+__global__ void prox_dual(double *y, double sigma)
+#endif
+{
+    /* p = proj(p, lbd)
+     * q0 -= sigma
+     */
+
+    SUBVAR_y_p(p,y)
+    SUBVAR_y_q0(q0,y)
+
+    // global thread index
+    int i = blockIdx.x*blockDim.x + threadIdx.x;
+
+    // stay inside maximum dimensions
+    if(i >= n_image)
+       return;
+
+    // iteration variables and misc.
+    int mm, tt, idx;
+    double norm = 0.0;
+
+    for(mm = 0; mm < l_shm; mm++) {
+        for(tt = 0; tt < d_image; tt++) {
+            idx = mm*nd_skip + tt*n_image + i;
+            norm += p[idx]*p[idx];
+        }
+    }
+
+    if(norm > lbd*lbd) {
+        norm = lbd/sqrt(norm);
         for(mm = 0; mm < l_shm; mm++) {
             for(tt = 0; tt < d_image; tt++) {
-                norm += pkp1[mm*nd_skip + tt*n_image + i] *
-                                            pkp1[mm*nd_skip + tt*n_image + i];
-            }
-        }
-
-        if(norm > lbd*lbd) {
-            norm = lbd/sqrt(norm);
-            for(mm = 0; mm < l_shm; mm++) {
-                for(tt = 0; tt < d_image; tt++) {
-                    pkp1[mm*nd_skip + tt*n_image + i] *= norm;
-                }
-            }
-        }
-
-        for(mm = 0; mm < l_shm; mm++) {
-            for(tt = 0; tt < d_image; tt++) {
-                pk[mm*nd_skip + tt*n_image + i] =
-                                            pkp1[mm*nd_skip + tt*n_image + i];
+                p[mm*nd_skip + tt*n_image + i] *= norm;
             }
         }
     }
+
+#ifdef precond
+    SUBVAR_y_q0(q0sigma,ysigma)
+    q0[i] -= q0sigma[i]*b_precond;
+#else
+    q0[i] -= sigma*b_precond;
+#endif
 }
