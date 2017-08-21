@@ -59,6 +59,27 @@ class PDHGModel(object):
         i = self.itervars
         c = self.constvars
 
+        def dummy_linop_gpu(x, ygrad):
+            x.get(ary=i['xk'].data)
+            self.linop(i['xk'], i['yk'])
+            ygrad.set(i['yk'].data)
+        def dummy_linop_adjoint_gpu(xgrad, y):
+            y.get(ary=i['yk'].data)
+            self.linop_adjoint(i['xk'], i['yk'])
+            xgrad.set(i['xk'].data)
+        def dummy_prox_primal_gpu(x, tau):
+            x.get(ary=i['xk'].data)
+            if 'precond' in c:
+                tau = c['xtau']
+            self.prox_primal(i['xk'], tau)
+            x.set(i['xk'].data)
+        def dummy_prox_dual_gpu(y, sigma):
+            y.get(ary=i['yk'].data)
+            if 'precond' in c:
+                tau = c['ysigma']
+            self.prox_dual(i['yk'], sigma)
+            y.set(i['yk'].data)
+
         p = ("*","[i]") if 'precond' in c else ("","")
         self.gpu_kernels = {
             'step_primal': ElementwiseKernel(
@@ -79,7 +100,10 @@ class PDHGModel(object):
                 arguments="double step, double *zk, double *zkp1, "\
                          +"double *zgradk, double *zgradkp1"),
             # the following have to be defined by subclasses:
-            #   'linop', 'linop_adjoint', 'prox_primal', 'prox_dual'
+            'linop': dummy_linop_gpu,
+            'linop_adjoint': dummy_linop_adjoint_gpu,
+            'prox_primal': dummy_prox_primal_gpu,
+            'prox_dual': dummy_prox_dual_gpu,
         }
 
         self.cuda_kernels, self.gpu_itervars, self.gpu_constvars = \
