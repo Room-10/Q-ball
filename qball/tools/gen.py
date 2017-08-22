@@ -3,10 +3,15 @@ import os, itertools, warnings
 import numpy as np
 import matplotlib.collections
 
-from dipy.core.gradients import GradientTable
+import nibabel as nib
+from dipy.core.gradients import GradientTable, gradient_table
 from dipy.sims.voxel import multi_tensor
 from dipy.sims.phantom import add_noise
 from dipy.data import fetch_stanford_hardi, read_stanford_hardi
+from dipy.data.fetcher import _make_fetcher, dipy_home
+from dipy.io.gradients import read_bvals_bvecs
+
+# median filter -> otsu -> mask (bg blacked out)
 from dipy.segment.mask import median_otsu
 
 from qball.sphere import load_sphere
@@ -25,15 +30,66 @@ except ImportError:
         finally:
             sys.stdout = old_target # restore to the previous value
 
+# 64 directions
+# 50x50x50 voxels
+fetch_isbi2013_challenge = _make_fetcher(
+    "fetch_isbi2013_challenge",
+    os.path.join(dipy_home, 'isbi2013_challenge'),
+    'http://hardi.epfl.ch/static/events/2013_ISBI/_downloads/',
+    [
+        'testing-data_DWIS_hardi-scheme_SNR-10.nii.gz',
+        'testing-data_DWIS_hardi-scheme_SNR-20.nii.gz',
+        'testing-data_DWIS_hardi-scheme_SNR-30.nii.gz',
+        'hardi-scheme.bval', 'hardi-scheme.bvec',
+    ],
+    [
+        'hardi-scheme_SNR-10.nii.gz',
+        'hardi-scheme_SNR-20.nii.gz',
+        'hardi-scheme_SNR-30.nii.gz',
+        'hardi-scheme.bval', 'hardi-scheme.bvec',
+    ],
+    [
+        'c3d97559f418358bb69467a0b5809630',
+        '33640b1297c8b498e0328fe268dbd5c1',
+        'a508716c5eec555a77a34817acafb0ca',
+        '92811d6e800a6a56d7498b0c4b5ed0c2',
+        'c8f5025b9d91037edb6cd00af9bd3e41',
+    ])
+
+def read_isbi2013_challenge(snr=30):
+    """ Load ISBI 2013's HARDI reconstruction challenge dataset
+
+    Returns
+    -------
+        img : obj, Nifti1Image
+        gtab : obj, GradientTable
+    """
+    files, folder = fetch_isbi2013_challenge()
+    fraw = os.path.join(folder, 'hardi-scheme_SNR-%d.nii.gz' % snr)
+    fbval = os.path.join(folder, 'hardi-scheme.bval')
+    fbvec = os.path.join(folder, 'hardi-scheme.bvec')
+    bvals, bvecs = read_bvals_bvecs(fbval, fbvec)
+    gtab = gradient_table(bvals, bvecs)
+    img = nib.load(fraw)
+    return img, gtab
+
+def synth_isbi2013(snr=30):
+    supported_snrs = np.array([10,20,30])
+    snr = supported_snrs[np.argmin(np.abs(supported_snrs - snr))]
+    with redirect_stdout(open(os.devnull, "w")), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        img, gtab = read_isbi2013_challenge(snr=snr)
+        assert(img.shape[-1] == gtab.bvals.size)
+        data = img.get_data()
+    S_data = np.array(data[12:27,22,21:36], order='C')
+    return S_data.copy(), S_data, gtab
+
 def rw_stanford(snr=None):
     with redirect_stdout(open(os.devnull, "w")), warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        fetch_stanford_hardi()
-        # img : 4d-array, img.shape[-1] == gtab.bvals.size
-        # gtab : contains bvals and bvecs
         img, gtab = read_stanford_hardi()
+        assert(img.shape[-1] == gtab.bvals.size)
         data = img.get_data()
-        # median filter -> otsu -> mask (bg blacked out)
         maskdata, mask = median_otsu(data, 3, 1, True,
                                      vol_idx=range(10, 50), dilate=2)
 

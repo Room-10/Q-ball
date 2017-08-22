@@ -165,6 +165,9 @@ class QBallExperiment(Experiment):
         self.fin_orig = np.clip(f, 0, np.max(f, -1)[..., None])
 
     def plot(self):
+        if not self.interactive:
+            return False
+
         logging.info("Plotting results...")
         n_image = np.prod(self.imagedims)
         d_image = len(self.imagedims)
@@ -174,7 +177,7 @@ class QBallExperiment(Experiment):
         stack = []
         if d_image == 2:
             uniform_odf = np.ones((l_labels,), order='C')/l_labels
-            spacing = np.tile(uniform_odf, (self.imagedims[1], 1, 1, 1))
+            spacing = np.tile(uniform_odf, (self.imagedims[0], 1, 1, 1))
             for i, u in enumerate([self.upd, self.fin, self.fin_orig]):
                 stack.append(u[:,:,None,:])
                 if i < 2:
@@ -183,13 +186,12 @@ class QBallExperiment(Experiment):
             stack = [u[:,None,None,:] for u in (self.upd, self.fin, self.fin_orig)]
         plotdata = np.concatenate(stack, axis=1)
 
-        if self.interactive:
-            # plot self.upd and self.fin as q-ball data sets
-            r = fvtk.ren()
-            r_data = fvtk.sphere_funcs(plotdata, self.qball_sphere, colormap='jet',
-                                       norm=self.plot_norm, scale=self.plot_scale)
-            fvtk.add(r, r_data)
-            fvtk.show(r, size=(1024, 768))
+        # plot self.upd and self.fin as q-ball data sets
+        r = fvtk.ren()
+        r_data = fvtk.sphere_funcs(plotdata, self.qball_sphere, colormap='jet',
+                                   norm=self.plot_norm, scale=self.plot_scale)
+        fvtk.add(r, r_data)
+        fvtk.show(r, size=(1024, 768))
 
         logging.info("Recording plot...")
         imgdata = [
