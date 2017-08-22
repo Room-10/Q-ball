@@ -381,13 +381,12 @@ class MyPDHGModel(PDHGModelHARDI):
         f_flat = c['f'].reshape(c['f'].shape[0], -1)
 
         project_gradients(g, c['lbd'], e['g_norms'])
-        if 'precond' in c:
-            q -= sigma['q'][:]*c['b_precond']
-        else:
-            q -= sigma*c['b_precond']
+
+        qsigma = sigma['q'] if 'precond' in c else sigma
+        q -= qsigma*c['b_precond']
+
         if c['dataterm'] == "W1":
-            if 'precond' in c:
-                p0 -= sigma['p0']*np.einsum('k,ki->ki', c['b'], f_flat)
-            else:
-                p0 -= sigma*np.einsum('k,ki->ki', c['b'], f_flat)
             project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])
+
+            p0sigma = sigma['p0'] if 'precond' in c else sigma
+            p0 -= p0sigma*np.einsum('k,ki->ki', c['b'], f_flat)

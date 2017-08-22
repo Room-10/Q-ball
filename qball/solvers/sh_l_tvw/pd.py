@@ -170,6 +170,7 @@ class MyPDHGModel(PDHGModelHARDI):
               - np.einsum('k,ki->', 0.5/c['b'], u2tmp**2)
 
         # infeas_d = |Y'q1 + M Y'q2| + |Ag - BPp| + |max(0, |g| - lbd)|
+        #          + |max(0, -b q0' + q1 + diag(b) D' p)|
         norms_spectral(g, e['g_norms'])
         infeas_d = norm(vgrad.ravel(), ord=np.inf) \
                 + norm(wgrad.ravel(), ord=np.inf) \
@@ -299,14 +300,12 @@ class MyPDHGModel(PDHGModelHARDI):
         u2 = x['u2']
         c = self.constvars
 
-        if 'precond' in c:
-            u2 += tau['u2'][:]*np.einsum('k,ki->ki', c['b'], c['f'])
-            u2 *= 1.0/(1.0 + tau['u2']*c['b'][:,None])
-        else:
-            u2 += tau*np.einsum('k,ki->ki', c['b'], c['f'])
-            u2[:] = np.einsum('k,k...->k...', 1.0/(1.0 + tau*c['b']), u2)
         u1[:] = np.fmax(0.0, u1)
         u1[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
+
+        u2tau = tau['u2'] if 'precond' in c else tau
+        u2 += u2tau*np.einsum('k,ki->ki', c['b'], c['f'])
+        u2 *= 1.0/(1.0 + u2tau*c['b'][:,None])
 
     def prox_dual(self, y, sigma):
         p, g, q0, q1, q2 = y.vars()
@@ -314,7 +313,6 @@ class MyPDHGModel(PDHGModelHARDI):
         e = self.extravars
 
         project_gradients(g, c['lbd'], e['g_norms'])
-        if 'precond' in c:
-            q0 -= sigma['q0'][:]*c['b_precond']
-        else:
-            q0 -= sigma*c['b_precond']
+
+        q0sigma = sigma['q0'] if 'precond' in c else sigma
+        q0 -= q0sigma*c['b_precond']

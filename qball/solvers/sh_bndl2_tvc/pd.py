@@ -272,10 +272,9 @@ class MyPDHGModel(PDHGModelHARDI):
         u1[:] = np.fmax(0.0, u1)
         u1[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
-        if 'precond' in c:
-            tau = tau['u2']
-        u2[:] = 1.0/(1.0 + tau)*np.fmax(u2 + tau*c['fl'], \
-            np.fmin(u2 + tau*c['fu'], (1.0 + tau)*u2))
+        u2tau = tau['u2'] if 'precond' in c else tau
+        u2[:] = 1.0/(1.0 + u2tau)*np.fmax(u2 + u2tau*c['fl'], \
+            np.fmin(u2 + u2tau*c['fu'], (1.0 + u2tau)*u2))
 
     def prox_dual(self, y, sigma):
         p, q0, q1, q2 = y.vars()
@@ -284,7 +283,5 @@ class MyPDHGModel(PDHGModelHARDI):
 
         project_duals(p, c['lbd'], e['p_norms'])
 
-        if 'precond' in c:
-            q0 -= sigma['q0']*c['b_precond']
-        else:
-            q0 -= sigma*c['b_precond']
+        q0sigma = sigma['q0'] if 'precond' in c else sigma
+        q0 -= q0sigma*c['b_precond']

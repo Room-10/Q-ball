@@ -87,8 +87,14 @@ class _SH_HardiQballBaseModel(QballBaseModel):
         sh_coef[..., 0] = self._n0_const
         return sh_coef
 
-sh_hardi_qball_models = [ "sh_l_tvw", "sh_l_tvc", "sh_l_tvo", "sh_bndl2_tvc", \
-"sh_bndl1_tvc" ]
+sh_hardi_qball_models = [
+    "sh_l_tvw",
+    "sh_l_tvc",
+    "sh_l_tvo",
+    "sh_bndl1_tvc",
+    "sh_bndl2_tvc",
+    "sh_bndl2_tvw",
+]
 
 for m in sh_hardi_qball_models:
     mname = "%s_Model" % m

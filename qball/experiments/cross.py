@@ -28,6 +28,18 @@ class MyExperiment(QBallExperiment):
             'step_factor': 0.033,
             'step_bound': 0.0014, # 0.00105
         },
+        'sh_bndl1_tvc': {
+            'step_factor': 0.1,
+            'step_bound': 0.0014, # 0.00105
+        },
+        'sh_bndl2_tvc': {
+            'step_factor': 0.1,
+            'step_bound': 0.0014, # 0.00105
+        },
+        'sh_bndl2_tvw': {
+            'step_factor': 0.033,
+            'step_bound': 0.0014, # 0.00105
+        },
     }
 
     def setup_imagedata(self):

@@ -42,7 +42,7 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     ))
 
     p  = cvxVariable(l_labels, d_image, n_image)
-    g  = cvxVariable(n_image, m_gradients, 2, d_image)
+    g  = cvxVariable(n_image, m_gradients, s_manifold, d_image)
     q0 = cvxVariable(n_image)
     q1 = cvxVariable(l_labels, n_image)
     q2 = cvxVariable(l_labels, n_image)

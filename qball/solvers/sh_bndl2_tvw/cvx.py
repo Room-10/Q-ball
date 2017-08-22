@@ -16,7 +16,9 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
     imagedims = data.shape[:-1]
     n_image = np.prod(imagedims)
     d_image = len(imagedims)
+    s_manifold = 2
     l_labels = b_sph.mdims['l_labels']
+    m_gradients = b_sph.mdims['m_gradients']
     assert(data.shape[-1] == l_labels)
 
     fl, fu = compute_bounds(b_sph, data, c=0.05)
@@ -28,15 +30,17 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
     M = model_matrix
     assert(M.size == l_shm)
 
-    logging.info("Solving ({l_labels} labels, {l_shm} shm; " \
+    logging.info("Solving ({l_labels} labels (m={m_gradients}), {l_shm} shm; " \
         "img: {imagedims}; lambda={lbd:.3g}) using CVX...".format(
         lbd=lbd,
         l_labels=l_labels,
+        m_gradients=m_gradients,
         l_shm=l_shm,
         imagedims="x".join(map(str,imagedims)),
     ))
 
-    p  = cvxVariable(l_shm, d_image, n_image)
+    p  = cvxVariable(l_labels, d_image, n_image)
+    g  = cvxVariable(n_image, m_gradients, s_manifold, d_image)
     q0 = cvxVariable(n_image)
     q1 = cvxVariable(l_labels, n_image)
     q2 = cvxVariable(l_labels, n_image)
@@ -53,13 +57,26 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
 
     constraints = []
     for i in range(n_image):
-        constraints.append(sum(cvx.sum_squares(p[k][:,i]) for k in range(l_shm)) <= lbd**2)
+        for j in range(m_gradients):
+            constraints.append(cvx.norm(g[i][j], 2) <= lbd)
+
+    w_constr = []
+    for j in range(m_gradients):
+        Aj = b_sph.A[j,:,:]
+        Bj = b_sph.B[j,:,:]
+        Pj = b_sph.P[j,:]
+        for i in range(n_image):
+            for t in range(d_image):
+                w_constr.append(
+                    Aj*g[i][j][:,t] == sum([Bj[:,m]*p[Pj[m]][t,i] for m in range(3)])
+                )
+    constraints += w_constr
 
     u1_constr = []
     for k in range(l_labels):
         for i in range(n_image):
             u1_constr.append(
-               b_sph.b[k]*q0[i] - q1[k,i] >= 0
+               b_sph.b[k]*(q0[i] - cvxOp(div_op, p[k], i)) - q1[k,i] >= 0
             )
     constraints += u1_constr
 
@@ -68,7 +85,7 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
         for i in range(n_image):
             Yk = cvx.vec(Y[:,k])
             v_constr.append(
-                Yk.T*(M[k]*q2[:,i] + q1[:,i]) - cvxOp(div_op, p[k], i) == 0
+                Yk.T*(M[k]*q2[:,i] + q1[:,i]) == 0
             )
     constraints += v_constr
 
@@ -80,17 +97,23 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
         ('u1', (l_labels,) + imagedims),
         ('u2', (l_labels, n_image)),
         ('v', (l_shm, n_image)),
+        ('w', (n_image, m_gradients, s_manifold, d_image)),
     )
 
     y = BlockVar(
-        ('p', (l_shm, d_image, n_image)),
+        ('p', (l_labels, d_image, n_image)),
+        ('g', (n_image, m_gradients, s_manifold, d_image)),
         ('q0', (n_image,)),
         ('q1', (l_labels, n_image)),
         ('q2', (l_labels, n_image)),
     )
 
-    for k in range(l_shm):
+    for k in range(l_labels):
         y['p'][k,:] = p[k].value
+
+    for i in range(n_image):
+        for j in range(m_gradients):
+            y['g'][i,j,:,:] = g[i][j].value
 
     y['q0'][:] = q0.value.ravel()
     y['q1'][:,:] = q1.value
@@ -107,6 +130,11 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
 
     np.einsum('km,mi->ki', sampling_matrix,
         np.einsum('m,mi->mi', model_matrix, x['v']), out=x['u2'])
+
+    for j in range(m_gradients):
+        for i in range(n_image):
+            for t in range(d_image):
+                x['w'][i,j,:,t] = w_constr[(j*n_image + i)*d_image + t].dual_value.ravel()
 
     logging.debug("{}: objd = {: 9.6g}".format(prob.status, prob.value))
     return (x,y), { 'objp': prob.value, 'status': prob.status }

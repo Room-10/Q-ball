@@ -20,10 +20,10 @@ Implemented models:
 * sh_bndl2_tvc (modified Ouyang '14)
 * sh_l_tvo
 * sh_l_tvw (proposed)
+* sh_bndl2_tvw (proposed)
 
 Not yet implemented:
 * sh_bndl1_tvw (proposed)
-* sh_bndl2_tvw (proposed)
 * srk_l_tvc
 * srk_l_tvw
 

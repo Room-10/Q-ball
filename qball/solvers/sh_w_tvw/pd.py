@@ -359,13 +359,9 @@ class MyPDHGModel(PDHGModelHARDI):
             l_labels = c['l_labels']
             u_flat = u.reshape(l_labels, -1)
             f_flat = c['f'].reshape(l_labels, -1)
-            if 'precond' in c:
-                tau_u_flat = tau['u'].reshape(l_labels, -1)
-                u_flat += tau_u_flat*np.einsum('k,ki->ki', c['b'], f_flat)
-                u_flat *= 1.0/(1.0 + tau_u_flat*c['b'][:,None])
-            else:
-                u_flat += tau*np.einsum('k,ki->ki', c['b'], f_flat)
-                u_flat *= 1.0/(1.0 + tau*c['b'][:,None])
+            utau = tau['u'].reshape(l_labels, -1) if 'precond' in c else tau
+            u_flat += utau*np.einsum('k,ki->ki', c['b'], f_flat)
+            u_flat *= 1.0/(1.0 + utau*c['b'][:,None])
 
         u[:] = np.fmax(0.0, u)
         u[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
@@ -377,13 +373,12 @@ class MyPDHGModel(PDHGModelHARDI):
         f_flat = c['f'].reshape(c['f'].shape[0], -1)
 
         project_gradients(g, c['lbd'], e['g_norms'])
-        if 'precond' in c:
-            q0 -= sigma['q0'][:]*c['b_precond']
-        else:
-            q0 -= sigma*c['b_precond']
+
+        q0sigma = sigma['q0'] if 'precond' in c else sigma
+        q0 -= q0sigma*c['b_precond']
+
         if c['dataterm'] == "W1":
-            if 'precond' in c:
-                p0 -= sigma['p0'][:]*np.einsum('k,ki->ki', c['b'], f_flat)
-            else:
-                p0 -= sigma*np.einsum('k,ki->ki', c['b'], f_flat)
             project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])
+
+            p0sigma = sigma['p0'] if 'precond' in c else sigma
+            p0 -= p0sigma*np.einsum('k,ki->ki', c['b'], f_flat)
