@@ -16,10 +16,14 @@ Implemented models:
 * n_w_tvw (SSVM)
 * sh_w_tvw (modified SSVM)
 * sh_l_tvc (Ouyang '14)
+* sh_bndl1_tvc (modified Ouyang '14)
+* sh_bndl2_tvc (modified Ouyang '14)
 * sh_l_tvo
 * sh_l_tvw (proposed)
 
 Not yet implemented:
+* sh_bndl1_tvw (proposed)
+* sh_bndl2_tvw (proposed)
 * srk_l_tvc
 * srk_l_tvw
 

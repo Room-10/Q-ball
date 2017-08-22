@@ -8,7 +8,7 @@ import cvxpy as cvx
 
 import logging
 
-def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
+def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 
@@ -18,31 +18,7 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     l_labels = b_sph.mdims['l_labels']
     assert(data.shape[-1] == l_labels)
 
-    f = np.zeros((l_labels, n_image), order='C')
-    f[:] = np.log(-np.log(data)).reshape(-1, l_labels).T
-
-    fl = np.zeros((l_labels, n_image), order='C')
-    fu = np.zeros((l_labels, n_image), order='C')
-
-    lbd = 1.0
-
-    c = 0.05
-    for i in range(n_image):
-        for k in range(l_labels):
-            if f[k,i] > 0:
-                fl[k,i] = f[k,i]*(1.0-c)
-                fu[k,i] = f[k,i]*(1.0+c)
-            else:
-                fl[k,i] = f[k,i]*(1.0+c)
-                fu[k,i] = f[k,i]*(1.0-c)
-
-    assert((fl <= fu).all())
-
-    fl_mean = np.einsum('ki,k->i', fl, b_sph.b)/(4*np.pi)
-    fu_mean = np.einsum('ki,k->i', fu, b_sph.b)/(4*np.pi)
-
-    fu -= fl_mean
-    fl -= fu_mean
+    fl, fu = compute_bounds(b_sph, data, c=0.05)
 
     Y = np.zeros(sampling_matrix.shape, order='C')
     Y[:] = sampling_matrix
@@ -67,7 +43,7 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=50.0):
     fid_fun_dual = 0
     for k in range(l_labels):
         for i in range(n_image):
-            fid_fun_dual += -cvx.power(q2[k,i],2)/4 \
+            fid_fun_dual += -cvx.power(q2[k,i],2)/2 \
                          - cvx.max_elemwise(q2[k,i]*fl[k,i],q2[k,i]*fu[k,i])
 
     obj = cvx.Maximize(fid_fun_dual - cvx.sum_entries(q0))

@@ -16,6 +16,14 @@ class MyExperiment(QBallExperiment):
             'step_factor': 0.001,
             'step_bound': 0.08, # 0.0651
         },
+        'sh_bndl1_tvc': {
+            'step_factor': 0.1,
+            'step_bound': 0.0013, # 0.00105
+        },
+        'sh_bndl2_tvc': {
+            'step_factor': 0.1,
+            'step_bound': 0.0013, # 0.00105
+        },
         'sh_l_tvc': {
             'step_factor': 0.1,
             'step_bound': 0.0013, # 0.00104

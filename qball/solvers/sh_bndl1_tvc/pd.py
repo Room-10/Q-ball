@@ -1,4 +1,5 @@
 
+from qball.tools.bounds import compute_bounds
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import norms_frobenius, project_duals
 from qball.tools.diff import gradient, divergence
@@ -29,6 +30,8 @@ class MyPDHGModel(PDHGModelHARDI):
         d_image = c['d_image']
         l_labels = c['l_labels']
 
+        c['fl'], c['fu'] = compute_bounds(e['b_sph'], data)
+
         c['Y'] = np.zeros(sampling_matrix.shape, order='C')
         c['Y'][:] = sampling_matrix
         l_shm = c['Y'].shape[1]
@@ -57,6 +60,8 @@ class MyPDHGModel(PDHGModelHARDI):
             ('q0', (n_image,)),
             ('q1', (l_labels, n_image)),
             ('q2', (l_labels, n_image)),
+            ('q3', (l_labels, n_image)),
+            ('q4', (l_labels, n_image)),
         )
 
         # start with a uniform distribution in each voxel
@@ -86,7 +91,7 @@ class MyPDHGModel(PDHGModelHARDI):
         prox_sg= "PP" if 'precond' in c else "Pd"
         self.cuda_templates = [
             ("prox_primal", prox_sg, (n_image, l_labels, 1), (16, 16, 1)),
-            ("prox_dual", prox_sg, (n_image, 1, 1), (512, 1, 1)),
+            ("prox_dual", prox_sg, (n_image, l_labels, 1), (16, 16, 1)),
             ("linop1", "PP", (l_shm, n_image, d_image), (16, 16, 1)),
             ("linop2", "PP", (l_labels, n_image, d_image), (16, 16, 1)),
             ("linop_adjoint1", "PP", (l_labels, 1, 1), (512, 1, 1)),
@@ -95,8 +100,8 @@ class MyPDHGModel(PDHGModelHARDI):
 
         from pkg_resources import resource_stream
         self.cuda_files = [
-            resource_stream('qball.solvers.sh_l_tvc', 'cuda_primal.cu'),
-            resource_stream('qball.solvers.sh_l_tvc', 'cuda_dual.cu'),
+            resource_stream('qball.solvers.sh_bndl1_tvc', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.sh_bndl1_tvc', 'cuda_dual.cu'),
         ]
 
         PDHGModelHARDI.prepare_gpu(self)
@@ -120,15 +125,19 @@ class MyPDHGModel(PDHGModelHARDI):
         #   q0grad = b'u1
         #   q1grad = Yv - u1
         #   q2grad = YMv - u2
+        #   q3grad = -u2
+        #   q4grad = u2
         u1, u2, v = x.vars()
-        pgrad, q0grad, q1grad, q2grad = ygrad.vars()
+        pgrad, q0grad, q1grad, q2grad, q3grad, q4grad = ygrad.vars()
         c = self.constvars
         e = self.extravars
 
         norms_frobenius(pgrad, e['p_norms'])
 
-        # obj_p = 0.5*<u2-f,u2-f>_b + lbd*\sum_i |(Dv)^i|_2
-        obj_p = np.einsum('k,ki->', c['b'], 0.5*(u2 - c['f'])**2) \
+        # obj_p = |max(0, fl - u2)|_1 + |max(0, u2 - fu)|_1
+        #       + lbd*\sum_i |(Dv)^i|_2
+        obj_p = np.sum(np.fmax(0.0, c['fl'] - u2)) \
+              + np.sum(np.fmax(0.0, u2 - c['fu'])) \
               + c['lbd']*e['p_norms'].sum()
 
         # infeas_p = |b'u1 - 1| + |Yv - u1| + |YMv - u2| + |max(0,-u1)|
@@ -142,32 +151,32 @@ class MyPDHGModel(PDHGModelHARDI):
     def obj_dual(self, xgrad, y):
         # xgrad is precomputed via self.linop_adjoint(xgrad, y)
         #   u1grad = b q0' - q1
-        #   u2grad = -q2
+        #   u2grad = q4 - q3 - q2
         #   vgrad = Y'q1 + M Y'q2 + D' p
-        p, q0, q1, q2 = y.vars()
+        p, q0, q1, q2, q3, q4 = y.vars()
         u1grad, u2grad, vgrad = xgrad.vars()
         c = self.constvars
         e = self.extravars
         l_labels = u1grad.shape[0]
 
-        # obj_d = -\sum_i q0_i + 0.5*b*[f^2 - (diag(1/b) q2 + f)^2]
-        u2tmp = u2grad - np.einsum('k,ki->ki', c['b'], c['f'])
-        obj_d = -np.sum(q0)*c['b_precond'] \
-              + np.einsum('k,ki->', 0.5*c['b'], c['f']**2) \
-              - np.einsum('k,ki->', 0.5/c['b'], u2tmp**2)
+        # obj_d = <q3,fl> - <q4,fu> - \sum_i q0_i
+        obj_d = np.einsum('ki,ki->', q3, c['fl']) \
+              - np.einsum('ki,ki->', q4, c['fu']) \
+              - np.sum(q0)*c['b_precond']
 
         # infeas_d = |Y'q1 + M Y'q2 + D' p| + |max(0, |p| - lbd)|
-        #          + |max(0, -b q0' + q1)|
+        #          + |q4 - q3 - q2| + |max(0, -b q0' + q1)|
         norms_frobenius(p, e['p_norms'])
         infeas_d = norm(vgrad.ravel(), ord=np.inf) \
-                + norm(np.fmax(0, e['p_norms'] - c['lbd']), ord=np.inf) \
-                + norm(np.fmax(0.0, -u1grad.ravel()), ord=np.inf)
+                 + norm(u2grad.ravel(), ord=np.inf) \
+                 + norm(np.fmax(0, e['p_norms'] - c['lbd']), ord=np.inf) \
+                 + norm(np.fmax(0.0, -u1grad.ravel()), ord=np.inf)
 
         return obj_d, infeas_d
 
     def precond(self, x, y):
         u1, u2, v = x.vars()
-        p, q0, q1, q2 = y.vars()
+        p, q0, q1, q2, q3, q4 = y.vars()
         u1_flat = u1.reshape(u1.shape[0], -1)
         vtmp = v.reshape((v.shape[0],) + u1.shape[1:])
         c = self.constvars
@@ -178,18 +187,22 @@ class MyPDHGModel(PDHGModelHARDI):
         # q0 = b'u1
         # q1 = Yv - u1
         # q2 = YMv - u2
+        # q3 = -u2
+        # q4 = u2
         gradient(p, vtmp, np.ones(v.shape[0]), c['avgskips'], precond=True)
         q0 += c['b_precond']*norm(c['b'], ord=1)
         q1 += norm(c['Y'], ord=1, axis=1)[:,None] + 1.0
         q2 += norm(np.einsum('km,m->km', c['Y'], c['M']), ord=1, axis=1)[:,None] + 1.0
+        q3 += 1.0
+        q4 += 1.0
         y[y.data > np.spacing(1)] = 1.0/y[y.data > np.spacing(1)]
 
         # u1 = b q0' - q1
-        # u2 = -q2
+        # u2 = q4 - q3 - q2
         # v = Y'q1 + M Y'q2
         # v += D' p (where D' = -div with Dirichlet boundary)
         u1_flat += c['b_precond']*np.abs(c['b'])[:,None] + 1.0
-        u2 += 1.0
+        u2 += 3.0
         v += norm(c['Y'], ord=1, axis=0)[:,None]
         v += norm(np.einsum('m,km->km', c['M'], c['Y']), ord=1, axis=0)[:,None]
         divergence(p, vtmp, np.ones(v.shape[0]), c['avgskips'], precond=True)
@@ -205,7 +218,7 @@ class MyPDHGModel(PDHGModelHARDI):
             nothing, the result is written to the given `ygrad`.
         """
         u1, u2, v = x.vars()
-        pgrad, q0grad, q1grad, q2grad = ygrad.vars()
+        pgrad, q0grad, q1grad, q2grad, q3grad, q4grad = ygrad.vars()
         c = self.constvars
 
         l_labels = u1.shape[0]
@@ -230,6 +243,10 @@ class MyPDHGModel(PDHGModelHARDI):
         np.einsum('km,mi->ki', c['Y'], np.einsum('m,mi->mi', c['M'], v), out=q2grad)
         q2grad -= u2
 
+        # q3grad = -u2, q4grad = u2
+        q3grad[:] = -u2
+        q4grad[:] = u2
+
     def linop_adjoint(self, xgrad, y):
         """ Apply the adjoint linear operator in the model to y
 
@@ -240,7 +257,7 @@ class MyPDHGModel(PDHGModelHARDI):
             nothing, the result is written to the given `xgrad`.
         """
         u1grad, u2grad, vgrad = xgrad.vars()
-        p, q0, q1, q2 = y.vars()
+        p, q0, q1, q2, q3, q4 = y.vars()
         c = self.constvars
 
         l_labels = u1grad.shape[0]
@@ -252,8 +269,8 @@ class MyPDHGModel(PDHGModelHARDI):
         np.einsum('k,i->ki', c['b'], c['b_precond']*q0, out=u1grad_flat)
         u1grad_flat -= q1
 
-        # u2grad = -q2
-        u2grad[:] = -q2
+        # u2grad = q4 - q3 - q2
+        u2grad[:] = q4 - q3 - q2
 
         # vgrad = Y'q1 + M Y'q2
         np.einsum('km,ki->mi', c['Y'], q1, out=vgrad)
@@ -266,23 +283,26 @@ class MyPDHGModel(PDHGModelHARDI):
     def prox_primal(self, x, tau):
         u1, u2, v = x.vars()
         c = self.constvars
-
-        if 'precond' in c:
-            u2 += tau['u2'][:]*np.einsum('k,ki->ki', c['b'], c['f'])
-            u2 *= 1.0/(1.0 + tau['u2']*c['b'][:,None])
-        else:
-            u2 += tau*np.einsum('k,ki->ki', c['b'], c['f'])
-            u2[:] = np.einsum('k,k...->k...', 1.0/(1.0 + tau*c['b']), u2)
         u1[:] = np.fmax(0.0, u1)
         u1[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
     def prox_dual(self, y, sigma):
-        p, q0, q1, q2 = y.vars()
+        p, q0, q1, q2, q3, q4 = y.vars()
         c = self.constvars
         e = self.extravars
 
         project_duals(p, c['lbd'], e['p_norms'])
+
         if 'precond' in c:
-            q0 -= sigma['q0'][:]*c['b_precond']
+            q0 -= sigma['q0']*c['b_precond']
         else:
             q0 -= sigma*c['b_precond']
+
+        if 'precond' in c:
+            q3 += sigma['q3']*c['fl']
+            q4 -= sigma['q4']*c['fu']
+        else:
+            q3 += sigma*c['fl']
+            q4 -= sigma*c['fu']
+        np.clip(q3, 0.0, 1.0, out=q3)
+        np.clip(q4, 0.0, 1.0, out=q4)

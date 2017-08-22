@@ -1,4 +1,5 @@
 
+from qball.tools.bounds import compute_bounds
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import norms_frobenius, project_duals
 from qball.tools.diff import gradient, divergence
@@ -28,6 +29,8 @@ class MyPDHGModel(PDHGModelHARDI):
         n_image = c['n_image']
         d_image = c['d_image']
         l_labels = c['l_labels']
+
+        c['fl'], c['fu'] = compute_bounds(e['b_sph'], data)
 
         c['Y'] = np.zeros(sampling_matrix.shape, order='C')
         c['Y'][:] = sampling_matrix
@@ -86,7 +89,7 @@ class MyPDHGModel(PDHGModelHARDI):
         prox_sg= "PP" if 'precond' in c else "Pd"
         self.cuda_templates = [
             ("prox_primal", prox_sg, (n_image, l_labels, 1), (16, 16, 1)),
-            ("prox_dual", prox_sg, (n_image, 1, 1), (512, 1, 1)),
+            ("prox_dual", prox_sg, (n_image, l_labels, 1), (16, 16, 1)),
             ("linop1", "PP", (l_shm, n_image, d_image), (16, 16, 1)),
             ("linop2", "PP", (l_labels, n_image, d_image), (16, 16, 1)),
             ("linop_adjoint1", "PP", (l_labels, 1, 1), (512, 1, 1)),
@@ -95,8 +98,8 @@ class MyPDHGModel(PDHGModelHARDI):
 
         from pkg_resources import resource_stream
         self.cuda_files = [
-            resource_stream('qball.solvers.sh_l_tvc', 'cuda_primal.cu'),
-            resource_stream('qball.solvers.sh_l_tvc', 'cuda_dual.cu'),
+            resource_stream('qball.solvers.sh_bndl2_tvc', 'cuda_primal.cu'),
+            resource_stream('qball.solvers.sh_bndl2_tvc', 'cuda_dual.cu'),
         ]
 
         PDHGModelHARDI.prepare_gpu(self)
@@ -127,8 +130,10 @@ class MyPDHGModel(PDHGModelHARDI):
 
         norms_frobenius(pgrad, e['p_norms'])
 
-        # obj_p = 0.5*<u2-f,u2-f>_b + lbd*\sum_i |(Dv)^i|_2
-        obj_p = np.einsum('k,ki->', c['b'], 0.5*(u2 - c['f'])**2) \
+        # obj_p = 0.5*|max(0, fl - u2)|_2^2 + 0.5*|max(0, u2 - fu)|_2^2
+        #       + lbd*\sum_i |(Dv)^i|_2
+        obj_p = 0.5*np.sum(np.fmax(0.0, c['fl'] - u2)**2) \
+              + 0.5*np.sum(np.fmax(0.0, u2 - c['fu'])**2) \
               + c['lbd']*e['p_norms'].sum()
 
         # infeas_p = |b'u1 - 1| + |Yv - u1| + |YMv - u2| + |max(0,-u1)|
@@ -150,18 +155,16 @@ class MyPDHGModel(PDHGModelHARDI):
         e = self.extravars
         l_labels = u1grad.shape[0]
 
-        # obj_d = -\sum_i q0_i + 0.5*b*[f^2 - (diag(1/b) q2 + f)^2]
-        u2tmp = u2grad - np.einsum('k,ki->ki', c['b'], c['f'])
-        obj_d = -np.sum(q0)*c['b_precond'] \
-              + np.einsum('k,ki->', 0.5*c['b'], c['f']**2) \
-              - np.einsum('k,ki->', 0.5/c['b'], u2tmp**2)
+        # obj_d = -0.5*\sum_i (q2_i^2 + max(fl_i q2_i, fu_i q2_i)) - \sum_i q0_i
+        obj_d = -np.sum(0.5*q2**2 + np.fmax(c['fl']*q2, c['fu']*q2)) \
+              - np.sum(q0)*c['b_precond']
 
         # infeas_d = |Y'q1 + M Y'q2 + D' p| + |max(0, |p| - lbd)|
         #          + |max(0, -b q0' + q1)|
         norms_frobenius(p, e['p_norms'])
         infeas_d = norm(vgrad.ravel(), ord=np.inf) \
-                + norm(np.fmax(0, e['p_norms'] - c['lbd']), ord=np.inf) \
-                + norm(np.fmax(0.0, -u1grad.ravel()), ord=np.inf)
+                 + norm(np.fmax(0, e['p_norms'] - c['lbd']), ord=np.inf) \
+                 + norm(np.fmax(0.0, -u1grad.ravel()), ord=np.inf)
 
         return obj_d, infeas_d
 
@@ -266,15 +269,13 @@ class MyPDHGModel(PDHGModelHARDI):
     def prox_primal(self, x, tau):
         u1, u2, v = x.vars()
         c = self.constvars
-
-        if 'precond' in c:
-            u2 += tau['u2'][:]*np.einsum('k,ki->ki', c['b'], c['f'])
-            u2 *= 1.0/(1.0 + tau['u2']*c['b'][:,None])
-        else:
-            u2 += tau*np.einsum('k,ki->ki', c['b'], c['f'])
-            u2[:] = np.einsum('k,k...->k...', 1.0/(1.0 + tau*c['b']), u2)
         u1[:] = np.fmax(0.0, u1)
         u1[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
+
+        if 'precond' in c:
+            tau = tau['u2']
+        u2[:] = 1.0/(1.0 + tau)*np.fmax(u2 + tau*c['fl'], \
+            np.fmin(u2 + tau*c['fu'], (1.0 + tau)*u2))
 
     def prox_dual(self, y, sigma):
         p, q0, q1, q2 = y.vars()
@@ -282,7 +283,8 @@ class MyPDHGModel(PDHGModelHARDI):
         e = self.extravars
 
         project_duals(p, c['lbd'], e['p_norms'])
+
         if 'precond' in c:
-            q0 -= sigma['q0'][:]*c['b_precond']
+            q0 -= sigma['q0']*c['b_precond']
         else:
             q0 -= sigma*c['b_precond']

@@ -46,8 +46,8 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
 \paragraph{Dual formulation}
 \begin{align*}
     \max_{\mat{y}} \quad
-        & -\sum_i \frac{1}{2} \left(
-                \left(q_2^i\right)^2 + \max\{f_1^i q_2^i,f_2^i q_2^i\}
+        & -\sum_i \left(
+                \frac{\left(q_2^i\right)^2}{2} + \max\{f_1^i q_2^i,f_2^i q_2^i\}
         \right) - \sum_i q_0^i  \\
     \text{s.t.}\quad
         & \|p^{i}\|_{2} \leq \lambda,
@@ -71,7 +71,7 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
         \Psi M v^i - u_2^i
     ), \\
     K^*(\mat{y}) &= (
-        q \otimes b - q_1,
+        q_0 \otimes b - q_1,
         -q_2,
         \Psi^T q_1^i + M \Psi^T q_2^i - \divergence{p}
     ),
@@ -87,7 +87,8 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
     \Prox_{\tau G}(\bar{\mat{x}})
     &= \left(
         \max(0,\bar{u_1}),
-        \frac{1}{1 + \tau}\max(u + \tau f_1, \min(u + \tau f_2, (1 + \tau)u)),
+        \frac{1}{1 + \tau} \max(u_2 + \tau f_1,
+                                \min(u_2 + \tau f_2, (1 + \tau)u_2)),
         \bar{v}
     \right).
 \end{align*}
