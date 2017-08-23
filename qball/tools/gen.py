@@ -69,8 +69,20 @@ def read_isbi2013_challenge(snr=30):
     fbval = os.path.join(folder, 'hardi-scheme.bval')
     fbvec = os.path.join(folder, 'hardi-scheme.bvec')
     bvals, bvecs = read_bvals_bvecs(fbval, fbvec)
+    img = nib.load(fraw).get_data()
+    # make sure the bvecs are only for the half sphere
+    dists = []
+    pairs = []
+    for i,v in enumerate(bvecs):
+        for j,w in enumerate(bvecs[(i+1):,:]):
+            pairs.append((i,i+1+j))
+            dists.append(np.sum((v+w)**2))
+    assert(np.min(dists) > 1e-4)
+    # for each bvec, add the opposite bvec
+    img = np.concatenate((img, img[...,bvals > 0]), axis=-1)
+    bvecs = np.concatenate((bvecs, -bvecs[bvals > 0]), axis=0)
+    bvals = np.concatenate((bvals, bvals[bvals > 0]), axis=0)
     gtab = gradient_table(bvals, bvecs)
-    img = nib.load(fraw)
     return img, gtab
 
 def synth_isbi2013(snr=30):
@@ -80,8 +92,7 @@ def synth_isbi2013(snr=30):
         warnings.simplefilter("ignore")
         img, gtab = read_isbi2013_challenge(snr=snr)
         assert(img.shape[-1] == gtab.bvals.size)
-        data = img.get_data()
-    S_data = np.array(data[12:27,22,21:36], order='C')
+    S_data = np.array(img[12:27,22,21:36], order='C')
     return S_data.copy(), S_data, gtab
 
 def rw_stanford(snr=None):

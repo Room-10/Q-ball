@@ -250,6 +250,14 @@ class Sphere(object):
 
         Args:
             ax : Instance of mpl_toolkits.mplot3d.Axes3d
+
+        Test code:
+            import matplotlib.pyplot as plt
+            from mpl_toolkits.mplot3d import Axes3D
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            load_sphere(r=2).plot(ax)
+            plt.show()
         """
         plot_mesh3(ax, self.v, self.P.T)
 
