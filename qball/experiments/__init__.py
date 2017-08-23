@@ -119,8 +119,12 @@ class QBallExperiment(Experiment):
             'sh_order': 6,
             'assume_normed': True
         }
-        self.plot_scale = 1.0
-        self.plot_norm = False
+        self.params['plot'] = {
+            'scale': 2.4,
+            'norm': True,
+            'spacing': True,
+            'records': [],
+        }
 
     def load_imagedata(self):
         gtab_file = os.path.join(self.output_dir, 'gtab.pickle')
@@ -164,48 +168,69 @@ class QBallExperiment(Experiment):
         f = basemodel.fit(self.S_data_orig).odf(self.qball_sphere)
         self.fin_orig = np.clip(f, 0, np.max(f, -1)[..., None])
 
+    def prepare_plot(self, data, p_slice=None):
+        p = self.params['plot']
+        p_slice = p['slice'] if p_slice is None else p_slice
+        data = (data,) if type(data) is np.ndarray else data
+
+        slicedims = data[0][p_slice].shape[:-1]
+        l_labels = data[0].shape[-1]
+
+        axes = [0,1,2]
+        long_ax = np.argmax(slicedims)
+        axes.remove(long_ax)
+        stack_ax = axes[0]
+        if slicedims[axes[0]] < slicedims[axes[1]]:
+            stack_ax = axes[1]
+        axes.remove(stack_ax)
+        view_ax = axes[0]
+
+        camera_params = {
+            'position': [0,0,0],
+            'view_up': [0,0,0]
+        }
+        camera_params['view_up'][max(long_ax,stack_ax)] = 1
+        dist = 2*p['scale']*max(slicedims[long_ax],len(data)*(slicedims[stack_ax]+1)-1)
+        camera_params['position'][view_ax] = -dist if view_ax == 1 else dist
+
+        stack = [u[p_slice] for u in data]
+        if p['spacing']:
+            uniform_odf = np.ones((1,1,1,l_labels), order='C')/(4*np.pi)
+            tile_descr = [1,1,1,1]
+            tile_descr[long_ax] = slicedims[long_ax]
+            spacing = np.tile(uniform_odf, tile_descr)
+            for i in reversed(range(1,len(stack))):
+                stack.insert(i, spacing)
+        if stack_ax == max(long_ax,stack_ax):
+            stack = list(reversed(stack))
+
+        plotdata = np.concatenate(stack, axis=stack_ax)
+        r = fvtk.ren()
+        r_data = fvtk.sphere_funcs(plotdata, self.qball_sphere, colormap='jet',
+                                   norm=p['norm'], scale=p['scale'])
+        fvtk.add(r, r_data)
+        r.set_camera(**camera_params)
+        return r
+
     def plot(self):
         if not self.interactive:
             return False
 
+        p = self.params['plot']
+
         logging.info("Plotting results...")
-        n_image = np.prod(self.imagedims)
-        d_image = len(self.imagedims)
-        l_labels = self.upd.shape[-1]
-
-        # set up data to plot, including spacing in the 2d case
-        stack = []
-        if d_image == 2:
-            uniform_odf = np.ones((l_labels,), order='C')/l_labels
-            spacing = np.tile(uniform_odf, (self.imagedims[0], 1, 1, 1))
-            for i, u in enumerate([self.upd, self.fin, self.fin_orig]):
-                stack.append(u[:,:,None,:])
-                if i < 2:
-                    stack.append(spacing)
-        else:
-            stack = [u[:,None,None,:] for u in (self.upd, self.fin, self.fin_orig)]
-        plotdata = np.concatenate(stack, axis=1)
-
-        # plot self.upd and self.fin as q-ball data sets
-        r = fvtk.ren()
-        r_data = fvtk.sphere_funcs(plotdata, self.qball_sphere, colormap='jet',
-                                   norm=self.plot_norm, scale=self.plot_scale)
-        fvtk.add(r, r_data)
+        r = self.prepare_plot([self.fin_orig, self.fin, self.upd])
         fvtk.show(r, size=(1024, 768))
 
         logging.info("Recording plot...")
+        p['records'] = [p['slice']] if len(p['records']) == 0 else p['records']
         imgdata = [
             (self.upd, "upd"),
             (self.fin, "fin"),
             (self.fin_orig, "fin_orig")
         ]
-        for img,name in imgdata:
-            plotdata2 = img.copy()
-            plotdata2.shape = self.imagedims + (1,)*(3-d_image) + (l_labels,)
-            r = fvtk.ren()
-            r_data = fvtk.sphere_funcs(plotdata2, self.qball_sphere, colormap='jet',
-                                       norm=self.plot_norm, scale=self.plot_scale)
-            fvtk.add(r, r_data)
-            r.reset_clipping_range()
-            fvtk.snapshot(r, size=(1500,1500), offscreen=True,
-                          fname=os.path.join(self.output_dir, "plot-"+name+".png"))
+        for img, name in imgdata:
+            for i,s in enumerate(self.params['plot']['records']):
+                fname = os.path.join(self.output_dir, "plot-%s-%d.png" % (name,i))
+                r = self.prepare_plot(img, p_slice=s)
+                fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname=fname)

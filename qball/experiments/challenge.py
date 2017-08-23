@@ -45,8 +45,9 @@ class MyExperiment(QBallExperiment):
     def __init__(self, args):
         QBallExperiment.__init__(self, args)
         self.params['base']['assume_normed'] = False
-        self.plot_scale = 2.4
-        self.plot_norm = True
+        self.params['plot'].update({
+            'slice': (slice(None),None,slice(None)),
+        })
 
     def setup_imagedata(self):
         logging.info("Data setup.")

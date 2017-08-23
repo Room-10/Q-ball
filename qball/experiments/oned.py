@@ -42,6 +42,15 @@ class MyExperiment(QBallExperiment):
         },
     }
 
+    def __init__(self, args):
+        QBallExperiment.__init__(self, args)
+        self.params['plot'].update({
+            'scale': 1.0,
+            'norm': False,
+            'slice': (slice(None),None,None),
+            'spacing': False,
+        })
+
     def setup_imagedata(self):
         logging.info("Data setup.")
         self.S_data_orig, self.S_data, self.gtab = gen.synth_unimodals()
