@@ -15,7 +15,7 @@ def lbd_key(lbd):
 
 class LambdaOptimizer(object):
     def __init__(self, experiment, model, basedir=None, dist=l2_dist,
-                 resume=False, redist=False, cvx=False):
+                 resume=False, redist=False, cvx=False, params=""):
         self.experiment = experiment
         self.model = model
         if basedir is not None:
@@ -29,6 +29,7 @@ class LambdaOptimizer(object):
         self.resume = resume
         self.redist = redist
         self.cvx = cvx
+        self.params = params
 
         self.result = None
         self.dists = {}
@@ -94,8 +95,11 @@ class LambdaOptimizer(object):
             shutil.copytree(self.basedir, output_dir,
                             ignore=shutil.ignore_patterns("*.log","*.zip"))
 
+        exp_params = 'lbd=%f' % lbd
+        if len(self.params) > 0:
+            exp_params = '%s,%s' % (exp_params, self.params)
         exp_args = [self.model, '--output', output_dir, '--batch']
-        exp_args += ['--params', 'lbd=%f' % lbd]
+        exp_args += ['--params', exp_params]
         if self.resume:
             exp_args.append('--resume')
         if self.cvx:
@@ -132,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument('experiment', metavar='EXPERIMENT', type=str)
     parser.add_argument('model', metavar='MODEL', type=str)
     parser.add_argument('--basedir', metavar='BASENAME', type=str, default="")
+    parser.add_argument('--params', metavar='PARAMS', type=str, default="")
     parser.add_argument('--resume', action="store_true", default=False)
     parser.add_argument('--redist', action="store_true", default=False,
                         help="Recalculate distances.")
@@ -149,6 +154,7 @@ if __name__ == "__main__":
     basedir = None if parsed_args.basedir == "" else parsed_args.basedir
     opt = LambdaOptimizer(exp.MyExperiment, parsed_args.model, basedir=basedir,
                           dist=distfun, resume=parsed_args.resume,
-                          redist=parsed_args.redist, cvx=parsed_args.cvx)
+                          redist=parsed_args.redist, cvx=parsed_args.cvx,
+                          params=parsed_args.params)
     opt.run()
     print(opt.result)
