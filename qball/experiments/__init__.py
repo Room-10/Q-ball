@@ -55,7 +55,30 @@ class Experiment(object):
         add_log_file(logging.getLogger(), self.output_dir)
         backup_source(self.output_dir)
         logging.info("Args: %s" % args)
+
+        self.init_params()
+        self.restore_from_output_dir()
+        self.apply_user_params()
+
+    def init_params(self):
         self.params = {}
+
+    def apply_user_params(self): pass
+
+    def restore_from_output_dir(self):
+        self.load_imagedata()
+
+        self.params_file = os.path.join(self.output_dir, 'params.pickle')
+        self.pd_result_file = os.path.join(self.output_dir, 'result_raw.pickle')
+        self.details_file = os.path.join(self.output_dir, 'details.pickle')
+
+        self.pd_result = data_from_file(self.pd_result_file, format="pickle")
+        if self.pd_result is not None:
+            self.details = data_from_file(self.details_file, format="pickle")
+
+        params = data_from_file(self.params_file, format="pickle")
+        if params is not None:
+            self.params.update(params)
 
     def setup_imagedata(self): pass
 
@@ -66,27 +89,11 @@ class Experiment(object):
     def solve(self): pass
 
     def run(self):
-        # try to load as much data from files as possible
-        self.load_imagedata()
-
-        pd_result_file = os.path.join(self.output_dir, 'result_raw.pickle')
-        details_file = os.path.join(self.output_dir, 'details.pickle')
-        params_file = os.path.join(self.output_dir, 'params.pickle')
-
-        self.pd_result = data_from_file(pd_result_file, format="pickle")
-        if self.pd_result is not None:
-            self.details = data_from_file(details_file, format="pickle")
-
-        params = data_from_file(params_file, format="pickle")
-        if params is None:
-            pickle.dump(self.params, open(params_file, 'wb'))
-        else:
-            self.params = params
-
+        pickle.dump(self.params, open(self.params_file, 'wb'))
         if self.pd_result is None or self.resume:
             self.solve()
-            pickle.dump(self.pd_result, open(pd_result_file, 'wb'))
-            pickle.dump(self.details, open(details_file, 'wb'))
+            pickle.dump(self.pd_result, open(self.pd_result_file, 'wb'))
+            pickle.dump(self.details, open(self.details_file, 'wb'))
 
         try:
             self.upd = self.pd_result[0]['u'].copy()
@@ -103,8 +110,9 @@ class QBallExperiment(Experiment):
 
     def __init__(self, args):
         Experiment.__init__(self, self.name, args)
-        import qball.models
-        self.Model = getattr(qball.models, '%s_Model' % self.model_name)
+
+    def init_params(self):
+        Experiment.init_params(self)
         self.params['model'] = self.model_name
         self.params['fit'] = {
             'solver_engine': 'cvx' if self.cvx else 'pd',
@@ -114,7 +122,6 @@ class QBallExperiment(Experiment):
             self.params['fit']['solver_params'].update(
                 self.pd_solver_params[self.model_name]
             )
-        self.params['fit']['solver_params'].update(self.user_params)
         self.params['base'] = {
             'sh_order': 6,
             'assume_normed': True
@@ -125,6 +132,9 @@ class QBallExperiment(Experiment):
             'spacing': True,
             'records': [],
         }
+
+    def apply_user_params(self):
+        self.params['fit']['solver_params'].update(self.user_params)
 
     def load_imagedata(self):
         gtab_file = os.path.join(self.output_dir, 'gtab.pickle')
@@ -151,7 +161,9 @@ class QBallExperiment(Experiment):
             self.continue_at = self.pd_result
             self.params['fit']['solver_params']['continue_at'] = self.continue_at
 
-        self.model = self.Model(self.gtab, **self.params['base'])
+        import qball.models
+        MyModel = getattr(qball.models, '%s_Model' % self.model_name)
+        self.model = MyModel(self.gtab, **self.params['base'])
         self.model.fit(self.S_data, **self.params['fit'])
         self.pd_result = self.model.solver_state
         self.details = self.model.solver_details
