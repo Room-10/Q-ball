@@ -11,14 +11,15 @@ from numpy.linalg import norm
 import logging
 
 def qball_regularization(f, gtab, sampling_matrix,
-                         lbd=10.0, dataterm="W1", **kwargs):
-    solver = MyPDHGModel(f, gtab, sampling_matrix, dataterm=dataterm, lbd=lbd)
+                         lbd=10.0, dataterm="W1", gradnorm="frobenius", **kwargs):
+    solver = MyPDHGModel(f, gtab, sampling_matrix,
+                         dataterm=dataterm, gradnorm=gradnorm, lbd=lbd)
     details = solver.solve(**kwargs)
     return solver.state, details
 
 class MyPDHGModel(PDHGModelHARDI):
     def __init__(self, f, gtab, sampling_matrix,
-                       dataterm="W1", constraint_u=None, **kwargs):
+                       dataterm="W1", gradnorm="frobenius", constraint_u=None, **kwargs):
         PDHGModelHARDI.__init__(self, f, gtab, **kwargs)
 
         c = self.constvars
@@ -52,6 +53,9 @@ class MyPDHGModel(PDHGModelHARDI):
 
         c['dataterm']= dataterm
         self.gpu_constvars['dataterm']= dataterm[0].upper()
+
+        c['gradnorm']= gradnorm
+        self.gpu_constvars['gradnorm']= gradnorm[0].upper()
 
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 
@@ -147,7 +151,7 @@ class MyPDHGModel(PDHGModelHARDI):
         c = self.constvars
         e = self.extravars
 
-        norms_nuclear(ggrad, e['g_norms'])
+        norms_nuclear(ggrad, e['g_norms'], c['gradnorm'])
         if c['dataterm'] == "quadratic":
             # obj_p = 0.5*<u-f,u-f>_b + \sum_ij |A^j' w^ij|
             umf_flat = (0.5*(u - c['f'])**2).reshape(u.shape[0], -1)
@@ -159,7 +163,7 @@ class MyPDHGModel(PDHGModelHARDI):
             norms_nuclear(g0grad[:,:,:,np.newaxis], g0_norms)
             result = g0_norms.sum()
 
-        obj_p = result + c['lbd'] * e['g_norms'].sum()
+        obj_p = result + c['lbd']*e['g_norms'].sum()
 
         # infeas_p = |diag(b) Du - P'B'w| + |b'u - 1| + |Yv - u| + |max(0,-u)|
         infeas_p = norm(pgrad.ravel(), ord=np.inf) \
@@ -202,7 +206,7 @@ class MyPDHGModel(PDHGModelHARDI):
 
         obj_d = -np.sum(q0)*c['b_precond'] + result
 
-        norms_spectral(g, e['g_norms'])
+        norms_spectral(g, e['g_norms'], c['gradnorm'])
         # infeas_d = |Y'q1| + |Ag - BPp| + |max(0, |g| - lbd)|
         infeas_d = norm(vgrad.ravel(), ord=np.inf) \
                  + norm(wgrad.ravel(), ord=np.inf) \
@@ -372,7 +376,7 @@ class MyPDHGModel(PDHGModelHARDI):
         e = self.extravars
         f_flat = c['f'].reshape(c['f'].shape[0], -1)
 
-        project_gradients(g, c['lbd'], e['g_norms'])
+        project_gradients(g, c['lbd'], e['g_norms'], c['gradnorm'])
 
         q0sigma = sigma['q0'] if 'precond' in c else sigma
         q0 -= q0sigma*c['b_precond']
