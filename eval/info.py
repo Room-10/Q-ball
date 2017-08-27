@@ -8,7 +8,7 @@ def print_params(output_dir):
         print("No parameters set.")
         return
     params = pickle.load(open(params_file, 'rb'))
-    print(json.dumps(params, sort_keys=True, indent=4))
+    print(json.dumps(params, sort_keys=True, indent=4, default=repr))
 
 def print_dists(output_dir):
     dists_file = os.path.join(output_dir, 'dists.npz')
