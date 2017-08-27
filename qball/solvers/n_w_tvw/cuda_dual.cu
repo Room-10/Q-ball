@@ -274,7 +274,7 @@ __global__ void prox_dual2(double *y, double sigma)
     double norm = 0.0;
 
     // g = proj(g, lbd)
-#if (d_image == 1 || s_manifold == 1 || gradnorm == 'f')
+#if (d_image == 1 || s_manifold == 1 || gradnorm == 'F')
     for (mm = 0; mm < s_manifold*d_image; mm++) {
         norm += gij[mm]*gij[mm];
     }
