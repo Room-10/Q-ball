@@ -274,15 +274,15 @@ __global__ void prox_dual2(double *y, double sigma)
     double norm = 0.0;
 
     // g = proj(g, lbd)
-#if (d_image == 1 || s_manifold == 1)
-    for (mm = 0; mm < LIM; mm++) {
-        norm += gij[mm*STEP1]*gij[mm*STEP1];
+#if (d_image == 1 || s_manifold == 1 || gradnorm == 'f')
+    for (mm = 0; mm < s_manifold*d_image; mm++) {
+        norm += gij[mm]*gij[mm];
     }
 
     if (norm > lbd*lbd) {
         norm = lbd/sqrt(norm);
-        for (mm = 0; mm < LIM; mm++) {
-            gij[mm*STEP1] *= norm;
+        for (mm = 0; mm < s_manifold*d_image; mm++) {
+            gij[mm] *= norm;
         }
     }
 #elif (d_image == 2 || s_manifold == 2)
