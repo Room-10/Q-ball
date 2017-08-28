@@ -17,7 +17,7 @@ def normalize(u, p=2, thresh=0.0):
     fact[ns > thresh] = 1.0/ns[ns > thresh]
     return  u * fact # uses broadcasting
 
-def project_gradients(g, lbd, g_norms):
+def project_gradients(g, lbd, g_norms, matrixnorm="spectral"):
     """ Project the gradients g to the spectral ball of radius lbd.
 
     Args:
@@ -32,12 +32,12 @@ def project_gradients(g, lbd, g_norms):
     """
     n_image, m_gradients, s_manifold, d_image = g.shape
 
-    if d_image == 1 or s_manifold == 1:
+    if d_image == 1 or s_manifold == 1 or matrixnorm == "frobenius":
         # L2 projection (wrt. Frobenius norm)
-        norms_spectral(g, g_norms)
+        norms_spectral(g, g_norms, gradnorm)
         np.fmax(lbd, g_norms, out=g_norms)
         np.divide(lbd, g_norms, out=g_norms)
-        g[:] = np.einsum('ij,ij...->ij...', g_norms, g)
+        g[:] = np.einsum('ij,ijlm->ijlm', g_norms, g)
     elif d_image == 2 or s_manifold == 2:
         # spectral projection (wrt. spectral norm)
         spectral_projection_2d(g, lbd)
@@ -103,7 +103,7 @@ def spectral_projection_2d(g, lbd):
                 # proj(A) = A * V * S * V^T
                 A[:] = np.dot(A, V.dot(S).dot(V.T))
 
-def norms_spectral(g, res):
+def norms_spectral(g, res, matrixnorm="spectral"):
     """ Compute the spectral norm of each g^ij and store it in res.
 
     Args:
@@ -115,7 +115,7 @@ def norms_spectral(g, res):
     """
     n_image, m_gradients, s_manifold, d_image = g.shape
 
-    if d_image == 1 or s_manifold == 1:
+    if d_image == 1 or s_manifold == 1 or matrixnorm == "frobenius":
         np.einsum('ijlm,ijlm->ij', g, g, out=res)
         np.sqrt(res, out=res)
     elif d_image == 2 or s_manifold == 2:
@@ -124,7 +124,7 @@ def norms_spectral(g, res):
         raise Exception("Dimension error: d_image={:d}, s_manifold={:d}" \
                         .format(d_image, s_manifold))
 
-def norms_nuclear(g, res):
+def norms_nuclear(g, res, matrixnorm="nuclear"):
     """ Compute the nuclear norm of each g^ij and store it in res.
 
     The nuclear norm is the dual norm of the spectral norm (see above)
@@ -138,7 +138,7 @@ def norms_nuclear(g, res):
     """
     n_image, m_gradients, s_manifold, d_image = g.shape
 
-    if d_image == 1 or s_manifold == 1:
+    if d_image == 1 or s_manifold == 1 or matrixnorm == "frobenius":
         np.einsum('ijlm,ijlm->ij', g, g, out=res)
         np.sqrt(res, out=res)
     elif d_image == 2 or s_manifold == 2:

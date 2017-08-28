@@ -11,14 +11,15 @@ from numpy.linalg import norm
 import logging
 
 def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix,
-                         lbd=1.0, **kwargs):
-    solver = MyPDHGModel(data, gtab, sampling_matrix, model_matrix, lbd=lbd)
+                    gradnorm="frobenius", lbd=1.0, **kwargs):
+    solver = MyPDHGModel(data, gtab, sampling_matrix, model_matrix,
+                         gradnorm=gradnorm, lbd=lbd)
     details = solver.solve(**kwargs)
     return solver.state, details
 
 class MyPDHGModel(PDHGModelHARDI):
     def __init__(self, data, gtab, sampling_matrix, model_matrix,
-                       constraint_u=None, **kwargs):
+                       gradnorm="frobenius", constraint_u=None, **kwargs):
         PDHGModelHARDI.__init__(self, data, gtab, **kwargs)
 
         c = self.constvars
@@ -48,6 +49,9 @@ class MyPDHGModel(PDHGModelHARDI):
             c['constraint_u'] = constraint_u
         uconstrloc = np.any(np.logical_not(np.isnan(c['constraint_u'])), axis=0)
         c['uconstrloc'] = uconstrloc
+
+        c['gradnorm']= gradnorm
+        self.gpu_constvars['gradnorm']= gradnorm[0].upper()
 
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 
@@ -135,7 +139,7 @@ class MyPDHGModel(PDHGModelHARDI):
         c = self.constvars
         e = self.extravars
 
-        norms_nuclear(ggrad, e['g_norms'])
+        norms_nuclear(ggrad, e['g_norms'], c['gradnorm'])
 
         # obj_p = 0.5*<u2-f,u2-f>_b + lbd*\sum_ij |A^j' w^ij|
         obj_p = np.einsum('k,ki->', c['b'], 0.5*(u2 - c['f'])**2) \
@@ -171,7 +175,7 @@ class MyPDHGModel(PDHGModelHARDI):
 
         # infeas_d = |Y'q1 + M Y'q2| + |Ag - BPp| + |max(0, |g| - lbd)|
         #          + |max(0, -b q0' + q1 + diag(b) D' p)|
-        norms_spectral(g, e['g_norms'])
+        norms_spectral(g, e['g_norms'], c['gradnorm'])
         infeas_d = norm(vgrad.ravel(), ord=np.inf) \
                 + norm(wgrad.ravel(), ord=np.inf) \
                 + norm(np.fmax(0, e['g_norms'] - c['lbd']), ord=np.inf) \
@@ -312,7 +316,7 @@ class MyPDHGModel(PDHGModelHARDI):
         c = self.constvars
         e = self.extravars
 
-        project_gradients(g, c['lbd'], e['g_norms'])
+        project_gradients(g, c['lbd'], e['g_norms'], c['gradnorm'])
 
         q0sigma = sigma['q0'] if 'precond' in c else sigma
         q0 -= q0sigma*c['b_precond']

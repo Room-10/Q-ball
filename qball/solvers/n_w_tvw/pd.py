@@ -10,13 +10,14 @@ from numpy.linalg import norm
 
 import logging
 
-def qball_regularization(f, gtab, lbd=10.0, dataterm="W1", **kwargs):
-    solver = MyPDHGModel(f, gtab, dataterm=dataterm, lbd=lbd)
+def qball_regularization(f, gtab, lbd=10.0, dataterm="W1", gradnorm="frobenius", **kwargs):
+    solver = MyPDHGModel(f, gtab, dataterm=dataterm, gradnorm=gradnorm, lbd=lbd)
     details = solver.solve(**kwargs)
     return solver.state, details
 
 class MyPDHGModel(PDHGModelHARDI):
-    def __init__(self, f, gtab, dataterm="W1", constraint_u=None, **kwargs):
+    def __init__(self, f, gtab, dataterm="W1", gradnorm="frobenius",
+                                constraint_u=None, **kwargs):
         PDHGModelHARDI.__init__(self, f, gtab, **kwargs)
 
         c = self.constvars
@@ -61,6 +62,9 @@ class MyPDHGModel(PDHGModelHARDI):
 
         c['dataterm']= dataterm
         self.gpu_constvars['dataterm']= dataterm[0].upper()
+
+        c['gradnorm']= gradnorm
+        self.gpu_constvars['gradnorm']= gradnorm[0].upper()
 
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 
@@ -148,7 +152,7 @@ class MyPDHGModel(PDHGModelHARDI):
         c = self.constvars
         e = self.extravars
 
-        norms_nuclear(ggrad, e['g_norms'])
+        norms_nuclear(ggrad, e['g_norms'], c['gradnorm'])
         if c['dataterm'] == "linear":
             # obj_p = <u,s>_b + \sum_ij |A^j' w^ij|
             result = np.einsum('ki,ki->', u.reshape(u.shape[0], -1),
@@ -208,7 +212,7 @@ class MyPDHGModel(PDHGModelHARDI):
 
         obj_d = -np.sum(q)*c['b_precond'] + result
 
-        norms_spectral(g, e['g_norms'])
+        norms_spectral(g, e['g_norms'], c['gradnorm'])
         # infeas_d = |Ag - BPp| + |max(0, |g| - lbd)|
         infeas_d = norm(wgrad.ravel(), ord=np.inf) \
                  + norm(np.fmax(0.0, e['g_norms'] - c['lbd']), ord=np.inf)
@@ -380,7 +384,7 @@ class MyPDHGModel(PDHGModelHARDI):
         e = self.extravars
         f_flat = c['f'].reshape(c['f'].shape[0], -1)
 
-        project_gradients(g, c['lbd'], e['g_norms'])
+        project_gradients(g, c['lbd'], e['g_norms'], c['gradnorm'])
 
         qsigma = sigma['q'] if 'precond' in c else sigma
         q -= qsigma*c['b_precond']
