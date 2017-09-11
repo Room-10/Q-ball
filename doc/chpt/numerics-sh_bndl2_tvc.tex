@@ -46,9 +46,10 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
 \paragraph{Dual formulation}
 \begin{align*}
     \max_{\mat{y}} \quad
-        & -\sum_i \left(
-                \frac{\left(q_2^i\right)^2}{2} + \max\{f_1^i q_2^i,f_2^i q_2^i\}
-        \right) - \sum_i q_0^i  \\
+        & -\sum_{i,k} \left[
+                \frac{\left(q_2^{ik}\right)^2}{2b_k}
+                + \max\{f_1^{ik} q_2^{ik},f_2^{ik} q_2^{ik}\}
+        \right] - \sum_i q_0^i  \\
     \text{s.t.}\quad
         & \|p^{i}\|_{2} \leq \lambda,
           ~q_0^i b^k - q_1^{ki} \geq 0 ~\forall i, k, \\
@@ -87,8 +88,8 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
     \Prox_{\tau G}(\bar{\mat{x}})
     &= \left(
         \max(0,\bar{u_1}),
-        \frac{1}{1 + \tau} \max(u_2 + \tau f_1,
-                                \min(u_2 + \tau f_2, (1 + \tau)u_2)),
+        (I + \tau\beta)^{-1} \max(u_2 + \tau \beta f_1,
+                                \min(u_2 + \tau \beta f_2, (I + \tau\beta)u_2)),
         \bar{v}
     \right).
 \end{align*}
