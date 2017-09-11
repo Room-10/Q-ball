@@ -1,9 +1,13 @@
 
+import itertools
+
 import numpy as np
 import matplotlib.collections
 
 from dipy.core.gradients import GradientTable
 from dipy.sims.voxel import multi_tensor
+
+from qball.sphere import load_sphere
 
 def seg_normal(p1, p2):
     p1 = np.array(p1)

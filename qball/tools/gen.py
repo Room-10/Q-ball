@@ -1,5 +1,5 @@
 
-import os, itertools, warnings
+import os, warnings
 import numpy as np
 
 import nibabel as nib

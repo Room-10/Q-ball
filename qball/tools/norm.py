@@ -34,7 +34,7 @@ def project_gradients(g, lbd, g_norms, matrixnorm="spectral"):
 
     if d_image == 1 or s_manifold == 1 or matrixnorm == "frobenius":
         # L2 projection (wrt. Frobenius norm)
-        norms_spectral(g, g_norms, gradnorm)
+        norms_spectral(g, g_norms, matrixnorm)
         np.fmax(lbd, g_norms, out=g_norms)
         np.divide(lbd, g_norms, out=g_norms)
         g[:] = np.einsum('ij,ijlm->ijlm', g_norms, g)
