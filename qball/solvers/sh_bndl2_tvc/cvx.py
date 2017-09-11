@@ -44,8 +44,9 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
     fid_fun_dual = 0
     for k in range(l_labels):
         for i in range(n_image):
-            fid_fun_dual += -cvx.power(q2[k,i],2)/2 \
-                         - cvx.max_elemwise(q2[k,i]*fl[k,i],q2[k,i]*fu[k,i])
+            fid_fun_dual += -1.0/b_sph.b[k]*(cvx.power(q2[k,i],2)/2 \
+                         + cvx.max_elemwise(q2[k,i]*b_sph.b[k]*fl[k,i],
+                             q2[k,i]*b_sph.b[k]*fu[k,i]))
 
     obj = cvx.Maximize(fid_fun_dual - cvx.sum_entries(q0))
 
