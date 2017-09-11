@@ -200,7 +200,7 @@ __global__ void prox_primal(double *x, double tau)
 #endif
 
     // u2 = 1/(1 + tau) max(u2 + tau*fl, min(u2 + tau*fu, (1 + tau)*u2))
-    u2[idx] = 1.0/(1.0 + tau)*fmax(newval + tau*fl[idx],
-        fmin(newval + tau*fu[idx], (1 + tau)*newval));
+    u2[idx] = 1.0/(1.0 + tau*b[k])*fmax(newval + tau*b[k]*fl[idx],
+        fmin(newval + tau*b[k]*fu[idx], (1 + tau*b[k])*newval));
 
 }

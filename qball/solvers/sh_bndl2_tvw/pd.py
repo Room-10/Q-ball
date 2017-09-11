@@ -145,8 +145,8 @@ class MyPDHGModel(PDHGModelHARDI):
 
         # obj_p = 0.5*|max(0, fl - u2)|_2^2 + 0.5*|max(0, u2 - fu)|_2^2
         #        + lbd*\sum_ij |A^j' w^ij|
-        obj_p = 0.5*np.sum(np.fmax(0.0, c['fl'] - u2)**2) \
-              + 0.5*np.sum(np.fmax(0.0, u2 - c['fu'])**2) \
+        obj_p = 0.5*np.einsum('k,ki->', c['b'], np.fmax(0.0, c['fl'] - u2)**2) \
+              + 0.5*np.einsum('k,ki->', c['b'], np.fmax(0.0, u2 - c['fu'])**2) \
               + c['lbd']*e['g_norms'].sum()
 
         # infeas_p = |diag(b) Du1 - P'B'w| + |b'u1 - 1|
@@ -171,9 +171,11 @@ class MyPDHGModel(PDHGModelHARDI):
         e = self.extravars
         l_labels = u1grad.shape[0]
 
-        # obj_d = -0.5*\sum_i (q2_i^2 + max(fl_i q2_i, fu_i q2_i)) - \sum_i q0_i
-        obj_d = -np.sum(0.5*q2**2 + np.fmax(c['fl']*q2, c['fu']*q2)) \
-              - np.sum(q0)*c['b_precond']
+        # obj_d = -\sum_i (q2_i^2/(2b) + max(fl_i q2_i, fu_i q2_i)) - \sum_i q0_i
+        obj_d = -np.sum(
+                    np.einsum('k,ki->ki', 0.5/c['b'], q2**2)
+                    + np.fmax(c['fl']*q2, c['fu']*q2)
+              ) - np.sum(q0)*c['b_precond']
 
         # infeas_d = |Y'q1 + M Y'q2| + |Ag - BPp| + |max(0, |g| - lbd)|
         #          + |max(0, -b q0' + q1 + diag(b) D' p)|
@@ -309,8 +311,10 @@ class MyPDHGModel(PDHGModelHARDI):
         u1[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
         u2tau = tau['u2'] if 'precond' in c else tau
-        u2[:] = 1.0/(1.0 + u2tau)*np.fmax(u2 + u2tau*c['fl'], \
-            np.fmin(u2 + u2tau*c['fu'], (1.0 + u2tau)*u2))
+        u2[:] = 1.0/(1.0 + u2tau*c['b'][:,None]) * \
+            np.fmax(u2 + u2tau*c['b'][:,None]*c['fl'],
+                np.fmin(u2 + u2tau*c['b'][:,None]*c['fu'],
+                    (1.0 + u2tau*c['b'][:,None])*u2))
 
     def prox_dual(self, y, sigma):
         p, g, q0, q1, q2 = y.vars()
