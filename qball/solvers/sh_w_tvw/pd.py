@@ -11,7 +11,7 @@ from numpy.linalg import norm
 import logging
 
 def qball_regularization(f, gtab, sampling_matrix,
-                         lbd=10.0, dataterm="W1", gradnorm="frobenius",
+                         lbd=1.0, dataterm="W1", gradnorm="frobenius",
                          constraint_u=None, inpaintloc=None, **kwargs):
     solver = MyPDHGModel(f, gtab, sampling_matrix,
                          dataterm=dataterm, gradnorm=gradnorm, lbd=lbd,

@@ -10,7 +10,7 @@ from numpy.linalg import norm
 
 import logging
 
-def qball_regularization(f, gtab, lbd=10.0, dataterm="W1", gradnorm="frobenius",
+def qball_regularization(f, gtab, lbd=1.0, dataterm="W1", gradnorm="frobenius",
                                   constraint_u=None, inpaintloc=None, **kwargs):
     solver = MyPDHGModel(f, gtab, dataterm=dataterm, gradnorm=gradnorm, lbd=lbd,
                                   constraint_u=constraint_u, inpaintloc=inpaintloc)

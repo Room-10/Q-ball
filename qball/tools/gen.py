@@ -1,5 +1,5 @@
 
-import os, warnings
+import os, warnings, logging
 import numpy as np
 
 import nibabel as nib
@@ -29,6 +29,20 @@ except ImportError:
         finally:
             sys.stdout = old_target # restore to the previous value
 
+from dipy.reconst.csdeconv import recursive_response
+import dipy.reconst.dti as dti
+from dipy.reconst.dti import fractional_anisotropy
+
+def csd_response(gtab, data):
+    tenmodel = dti.TensorModel(gtab)
+    tenfit = tenmodel.fit(data, mask=data[..., 0] > 200)
+    FA = fractional_anisotropy(tenfit.evals)
+    MD = dti.mean_diffusivity(tenfit.evals)
+    wm_mask = (np.logical_or(FA >= 0.4, (np.logical_and(FA >= 0.15, MD >= 0.0011))))
+    response = recursive_response(gtab, data, mask=wm_mask, sh_order=8,
+                      peak_thr=0.01, init_fa=0.08, init_trace=0.0021, iter=8,
+                      convergence=0.001, parallel=True)
+
 def synth_isbi2013(snr=30):
     supported_snrs = np.array([10,20,30])
     snr = supported_snrs[np.argmin(np.abs(supported_snrs - snr))]
@@ -39,7 +53,7 @@ def synth_isbi2013(snr=30):
     S_data = np.array(img[12:27,22,21:36], order='C')
     return S_data.copy(), S_data, gtab
 
-def rw_stanford(snr=None):
+def rw_stanford(snr=None, csd=False):
     with redirect_stdout(open(os.devnull, "w")), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         img, gtab = read_stanford_hardi()
@@ -52,7 +66,14 @@ def rw_stanford(snr=None):
     S_data_orig = S_data.copy()
     if snr is not None:
         S_data[:] = add_noise(S_data_orig, snr=snr)
-    return S_data_orig, S_data, gtab
+
+    if csd:
+        logging.info("Estimating response function for CSD...")
+        resp = csd_response(gtab, data)
+    else:
+        resp = None
+
+    return S_data_orig, S_data, gtab, resp
 
 def synth_unimodals(bval=3000, imagedims=(8,), jiggle=10, snr=None):
     d_image = len(imagedims)

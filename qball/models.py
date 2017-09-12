@@ -4,15 +4,22 @@ import numpy as np
 import dipy.core.sphere
 from dipy.reconst.odf import OdfFit
 from dipy.reconst.shm import QballBaseModel, CsaOdfModel
+from dipy.reconst.csdeconv import ConstrainedSphericalDeconvModel
 
 class n_w_tvw_Model(CsaOdfModel):
     """ Implementation of Wasserstein-TV model from SSVM """
-    def fit(self, *args, solver_engine="pd", solver_params={}, sphere=None, **kwargs):
+    def fit(self, data, solver_engine="pd", solver_params={},
+            sphere=None, csd_response=None, **kwargs):
         from qball.solvers.n_w_tvw.pd import qball_regularization
         if sphere is None:
             b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
             sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
-        f = CsaOdfModel.fit(self, *args, **kwargs).odf(sphere)
+        if csd_response is not None:
+            csd_model = ConstrainedSphericalDeconvModel(self.gtab, csd_response)
+            odf_fit = csd_model.fit(data)
+        else:
+            odf_fit = CsaOdfModel.fit(self, data, **kwargs)
+        f = odf_fit.odf(sphere)
         f = np.clip(f, 0, np.max(f, -1)[..., None])
         pd_state, details = qball_regularization(f, self.gtab, **solver_params)
         self.solver_state = pd_state
@@ -35,14 +42,20 @@ class _TrivialOdfFit(OdfFit):
 
 class sh_w_tvw_Model(CsaOdfModel):
     """ Implementation of Wasserstein-TV model with SHM regularization """
-    def fit(self, *args, solver_engine="cvx", solver_params={}, **kwargs):
+    def fit(self, data, solver_engine="cvx", solver_params={},
+            csd_response=None, **kwargs):
         if solver_engine == "cvx":
             from qball.solvers.sh_w_tvw.cvx import qball_regularization
         else:
             from qball.solvers.sh_w_tvw.pd import qball_regularization
         self.solver_func = qball_regularization
         self.solver_params = solver_params
-        return CsaOdfModel.fit(self, *args, **kwargs)
+        if csd_response is not None:
+            csd_model = ConstrainedSphericalDeconvModel(self.gtab, csd_response)
+            odf_fit = csd_model.fit(data)
+        else:
+            odf_fit = CsaOdfModel.fit(self, data, **kwargs)
+        return odf_fit
 
     def _get_shm_coef(self, data, mask=None):
         """Returns the coefficients of the model"""

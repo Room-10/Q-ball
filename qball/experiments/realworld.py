@@ -51,4 +51,8 @@ class MyExperiment(QBallExperiment):
 
     def setup_imagedata(self):
         logging.info("Data setup.")
-        self.S_data_orig, self.S_data, self.gtab = gen.rw_stanford(snr=40)
+        self.S_data_orig, self.S_data, self.gtab, resp = \
+                                            gen.rw_stanford(snr=30, csd=False)
+
+        if self.model_name in ["sh_w_tvw", "n_w_tvw"]:
+            self.params['fit']['csd_response'] = resp
