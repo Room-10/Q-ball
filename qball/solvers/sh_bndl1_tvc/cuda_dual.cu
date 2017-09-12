@@ -55,9 +55,9 @@ __global__ void linop2(double *x, double *ygrad)
      *
      * q2grad = YMv - u2
      *
-     * q3grad = -u2
+     * q3grad = -diag(b)*u2
      *
-     * q4grad = u2
+     * q4grad = diag(b)*u2
      */
 
     SUBVAR_x_u1(u1,x)
@@ -101,19 +101,21 @@ __global__ void linop2(double *x, double *ygrad)
     }
     q1grad[idx] = newval;
 
-    // q2grad[k,i]
-    idx = k*n_image + i;
-    newval = -u2[idx];
+    if (inpaint_nloc[i]) {
+        // q2grad[k,i]
+        idx = k*n_image + i;
+        newval = -u2[idx];
 
-    // q2grad = YMv - u2
-    for(mm = 0; mm < l_shm; mm++) {
-        newval += Y[k*l_shm + mm]*M[mm]*v[mm*n_image + i];
+        // q2grad = YMv - u2
+        for(mm = 0; mm < l_shm; mm++) {
+            newval += Y[k*l_shm + mm]*M[mm]*v[mm*n_image + i];
+        }
+        q2grad[idx] = newval;
+
+        // q3grad = -u2, q4grad = u2
+        q3grad[idx] = -b[k]*u2[idx];
+        q4grad[idx] = b[k]*u2[idx];
     }
-    q2grad[idx] = newval;
-
-    // q3grad = -u2, q4grad = u2
-    q3grad[idx] = -u2[idx];
-    q4grad[idx] = u2[idx];
 }
 
 #ifdef precond
@@ -124,8 +126,8 @@ __global__ void prox_dual(double *y, double sigma)
 {
     /* p = proj(p, lbd)
      * q0 -= sigma
-     * q3 = proj_[0,1](q3 + sigma*fl)
-     * q4 = proj_[0,1](q4 - sigma*fu)
+     * q3 = proj_[0,1](q3 + sigma*diag(b)*fl)
+     * q4 = proj_[0,1](q4 - sigma*diag(b)*fu)
      */
 
     SUBVAR_y_p(p,y)
@@ -170,29 +172,31 @@ __global__ void prox_dual(double *y, double sigma)
 #endif
     }
 
-    // q3[k,i]
-    idx = k*n_image + i;
-    newval = q3[idx];
+    if (inpaint_nloc[i]) {
+        // q3[k,i]
+        idx = k*n_image + i;
+        newval = q3[idx];
 
-    // q3 = proj_[0,1](q3 + sigma*fl)
+        // q3 = proj_[0,1](q3 + sigma*diag(b)*fl)
 #ifdef precond
-    SUBVAR_y_q3(q3sigma,ysigma)
-    newval += q3sigma[idx]*fl[idx];
+        SUBVAR_y_q3(q3sigma,ysigma)
+        newval += q3sigma[idx]*b[k]*fl[idx];
 #else
-    newval += sigma*fl[idx];
+        newval += sigma*b[k]*fl[idx];
 #endif
-    q3[idx] = fmax(0.0, fmin(1.0, newval));
+        q3[idx] = fmax(0.0, fmin(1.0, newval));
 
-    // q4[k,i]
-    idx = k*n_image + i;
-    newval = q4[idx];
+        // q4[k,i]
+        idx = k*n_image + i;
+        newval = q4[idx];
 
-    // q4 = proj_[0,1](q4 - sigma*fu)
+        // q4 = proj_[0,1](q4 - sigma*diag(b)*fu)
 #ifdef precond
-    SUBVAR_y_q4(q4sigma,ysigma)
-    newval -= q4sigma[idx]*fu[idx];
+        SUBVAR_y_q4(q4sigma,ysigma)
+        newval -= q4sigma[idx]*b[k]*fu[idx];
 #else
-    newval -= sigma*fu[idx];
+        newval -= sigma*b[k]*fu[idx];
 #endif
-    q4[idx] = fmax(0.0, fmin(1.0, newval));
+        q4[idx] = fmax(0.0, fmin(1.0, newval));
+    }
 }

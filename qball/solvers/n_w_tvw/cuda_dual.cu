@@ -86,22 +86,24 @@ __global__ void linop1(double *x, double *ygrad)
             qgrad[i] = newval;
 
 #if 'W' == dataterm
-            // p0grad = 0
-            for (kk = 0; kk < l_labels; kk++) {
-                p0grad[kk*n_image + i] = 0.0;
-            }
+            if (inpaint_nloc[i]) {
+                // p0grad = 0
+                for (kk = 0; kk < l_labels; kk++) {
+                    p0grad[kk*n_image + i] = 0.0;
+                }
 
-            // p0grad_t^i += - P^j' B^j' w0_t^ij
-            for (jj = 0; jj < m_gradients; jj++) {
-                for (mm = 0; mm < r_points; mm++) {
-                    idx = P[jj*r_points + mm]*n_image + i;
-                    newval = p0grad[idx];
-                    for (ll = 0; ll < s_manifold; ll++) {
-                        // jlm,ijlt->jmti
-                        newval -= B[jj*sr_skip + ll*r_points + mm] *
-                                    w0[i*sm_skip + jj*s_manifold + ll];
+                // p0grad_t^i += - P^j' B^j' w0_t^ij
+                for (jj = 0; jj < m_gradients; jj++) {
+                    for (mm = 0; mm < r_points; mm++) {
+                        idx = P[jj*r_points + mm]*n_image + i;
+                        newval = p0grad[idx];
+                        for (ll = 0; ll < s_manifold; ll++) {
+                            // jlm,ijlt->jmti
+                            newval -= B[jj*sr_skip + ll*r_points + mm] *
+                                        w0[i*sm_skip + jj*s_manifold + ll];
+                        }
+                        p0grad[idx] = newval;
                     }
-                    p0grad[idx] = newval;
                 }
             }
 #endif
@@ -109,7 +111,7 @@ __global__ void linop1(double *x, double *ygrad)
     }
 
 #if 'W' == dataterm
-    if (t == 0) {
+    if (t == 0 && inpaint_nloc[i]) {
         // g0grad[i,j,m]
         idx = i*sm_skip + j*s_manifold + m;
         newval = 0.0;
@@ -176,8 +178,8 @@ __global__ void linop2(double *x, double *ygrad)
     }
     pgrad[idx] = newval;
 
-    if (t == 0) {
 #if 'W' == dataterm
+    if (t == 0 && inpaint_nloc[i]) {
         SUBVAR_y_p0(p0grad,ygrad)
 
         // p0grad[k,i]
@@ -187,8 +189,8 @@ __global__ void linop2(double *x, double *ygrad)
         // p0grad += diag(b) u
         newval += b[k]*u[idx];
         p0grad[k*n_image + i] = newval;
-#endif
     }
+#endif
 }
 
 #ifdef precond
@@ -221,14 +223,16 @@ __global__ void prox_dual1(double *y, double sigma)
     }
 
 #if 'W' == dataterm
-    SUBVAR_y_p0(p0,y)
-    int idx = k*n_image + i;
+    if (inpaint_nloc[i]) {
+        SUBVAR_y_p0(p0,y)
+        int idx = k*n_image + i;
 #ifdef precond
-    SUBVAR_y_p0(p0sigma,ysigma)
-    p0[idx] -= p0sigma[idx]*b[k]*f[idx];
+        SUBVAR_y_p0(p0sigma,ysigma)
+        p0[idx] -= p0sigma[idx]*b[k]*f[idx];
 #else
-    p0[idx] -= sigma*b[k]*f[idx];
+        p0[idx] -= sigma*b[k]*f[idx];
 #endif
+    }
 #endif
 }
 
@@ -348,19 +352,21 @@ __global__ void prox_dual2(double *y, double sigma)
     }
 #endif
 #if 'W' == dataterm
-    SUBVAR_y_g0(g0,y)
-    gij = &g0[i*sm_skip + j*s_manifold];
-    norm = 0.0;
+    if (inpaint_nloc[i]) {
+        SUBVAR_y_g0(g0,y)
+        gij = &g0[i*sm_skip + j*s_manifold];
+        norm = 0.0;
 
-    // g0 = proj(g0, 1.0)
-    for (mm = 0; mm < s_manifold; mm++) {
-        norm += gij[mm]*gij[mm];
-    }
-
-    if (norm > 1.0) {
-        norm = 1.0/sqrt(norm);
+        // g0 = proj(g0, 1.0)
         for (mm = 0; mm < s_manifold; mm++) {
-            gij[mm] *= norm;
+            norm += gij[mm]*gij[mm];
+        }
+
+        if (norm > 1.0) {
+            norm = 1.0/sqrt(norm);
+            for (mm = 0; mm < s_manifold; mm++) {
+                gij[mm] *= norm;
+            }
         }
     }
 #endif

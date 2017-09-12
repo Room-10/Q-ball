@@ -53,7 +53,7 @@ __global__ void linop_adjoint1(double *xgrad, double *y)
 __global__ void linop_adjoint2(double *xgrad, double *y)
 {
     /* u1grad = b q0' - q1
-     * u2grad = q4 - q3 - q2
+     * u2grad = diag(b)*(q4 - q3) - q2
      *
      * vgrad^i += Y'q1^i + M Y'q2^i
      */
@@ -87,8 +87,10 @@ __global__ void linop_adjoint2(double *xgrad, double *y)
         // u1grad = b q0' - q1
         u1grad[idx] = b[k]*(b_precond*q0[i]) - q1[idx];
 
-        // u2grad = q4 - q3 - q2
-        u2grad[idx] = q4[idx] - q3[idx] - q2[idx];
+        if (inpaint_nloc[i]) {
+            // u2grad = diag(b)*(q4 - q3) - q2
+            u2grad[idx] = b[k]*(q4[idx] - q3[idx]) - q2[idx];
+        }
     }
 
     if (k == 0) {
@@ -96,11 +98,20 @@ __global__ void linop_adjoint2(double *xgrad, double *y)
         idx = m*n_image + i;
         newval = vgrad[idx];
 
-        // vgrad^i = Y'q1^i + M Y'q2^i
+        // vgrad^i = Y'q1^i
         for (kk = 0; kk < l_labels; kk++) {
             // km,ki->mi
-            newval += Y[kk*l_shm + m]*(q1[kk*n_image + i] + M[m]*q2[kk*n_image + i]);
+            newval += Y[kk*l_shm + m]*q1[kk*n_image + i];
         }
+
+        if (inpaint_nloc[i]) {
+            // vgrad^i += M Y'q2^i
+            for (kk = 0; kk < l_labels; kk++) {
+                // km,ki->mi
+                newval += Y[kk*l_shm + m]*M[m]*q2[kk*n_image + i];
+            }
+        }
+
         vgrad[idx] = newval;
     }
 }

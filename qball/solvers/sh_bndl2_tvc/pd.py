@@ -11,14 +11,15 @@ from numpy.linalg import norm
 import logging
 
 def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix,
-                         lbd=1.0, **kwargs):
-    solver = MyPDHGModel(data, gtab, sampling_matrix, model_matrix, lbd=lbd)
+                         lbd=1.0, constraint_u=None, inpaintloc=None, **kwargs):
+    solver = MyPDHGModel(data, gtab, sampling_matrix, model_matrix,
+                         lbd=lbd, constraint_u=constraint_u, inpaintloc=inpaintloc)
     details = solver.solve(**kwargs)
     return solver.state, details
 
 class MyPDHGModel(PDHGModelHARDI):
     def __init__(self, data, gtab, sampling_matrix, model_matrix,
-                       constraint_u=None, **kwargs):
+                       constraint_u=None, inpaintloc=None, **kwargs):
         PDHGModelHARDI.__init__(self, data, gtab, **kwargs)
 
         c = self.constvars
@@ -47,6 +48,10 @@ class MyPDHGModel(PDHGModelHARDI):
             c['constraint_u'] = constraint_u
         uconstrloc = np.any(np.logical_not(np.isnan(c['constraint_u'])), axis=0)
         c['uconstrloc'] = uconstrloc
+
+        if inpaintloc is None:
+            inpaintloc = np.zeros(imagedims)
+        c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
 
         e['p_norms'] = np.zeros((n_image,), order='C')
 
@@ -132,14 +137,16 @@ class MyPDHGModel(PDHGModelHARDI):
 
         # obj_p = 0.5*|max(0, fl - u2)|_2^2 + 0.5*|max(0, u2 - fu)|_2^2
         #       + lbd*\sum_i |(Dv)^i|_2
-        obj_p = 0.5*np.sum(np.fmax(0.0, c['fl'] - u2)**2) \
-              + 0.5*np.sum(np.fmax(0.0, u2 - c['fu'])**2) \
+        flmu = (c['fl'] - u2)[:,c['inpaint_nloc']]
+        umfu = (u2 - c['fu'])[:,c['inpaint_nloc']]
+        obj_p = 0.5*np.einsum('k,ki->', c['b'], np.fmax(0.0, flmu)**2) \
+              + 0.5*np.einsum('k,ki->', c['b'], np.fmax(0.0, umfu)**2) \
               + c['lbd']*e['p_norms'].sum()
 
         # infeas_p = |b'u1 - 1| + |Yv - u1| + |YMv - u2| + |max(0,-u1)|
         infeas_p = norm(q0grad.ravel() - c['b_precond'], ord=np.inf) \
             + norm(q1grad.ravel(), ord=np.inf) \
-            + norm(q2grad.ravel(), ord=np.inf) \
+            + norm(q2grad[:,c['inpaint_nloc']].ravel(), ord=np.inf) \
             + norm(np.fmax(0.0, -u1.ravel()), ord=np.inf)
 
         return obj_p, infeas_p
@@ -155,9 +162,11 @@ class MyPDHGModel(PDHGModelHARDI):
         e = self.extravars
         l_labels = u1grad.shape[0]
 
-        # obj_d = -0.5*\sum_i (q2_i^2 + max(fl_i q2_i, fu_i q2_i)) - \sum_i q0_i
-        obj_d = -np.sum(0.5*q2**2 + np.fmax(c['fl']*q2, c['fu']*q2)) \
-              - np.sum(q0)*c['b_precond']
+        # obj_d = -\sum_i (q2_i^2/(2b) + max(fl_i q2_i, fu_i q2_i)) - \sum_i q0_i
+        obj_d = -np.sum((
+                np.einsum('k,ki->ki', 0.5/c['b'], q2**2) \
+                + np.fmax(c['fl']*q2, c['fu']*q2)
+              )[:,c['inpaint_nloc']]) - np.sum(q0)*c['b_precond']
 
         # infeas_d = |Y'q1 + M Y'q2 + D' p| + |max(0, |p| - lbd)|
         #          + |max(0, -b q0' + q1)|
@@ -184,7 +193,8 @@ class MyPDHGModel(PDHGModelHARDI):
         gradient(p, vtmp, np.ones(v.shape[0]), c['avgskips'], precond=True)
         q0 += c['b_precond']*norm(c['b'], ord=1)
         q1 += norm(c['Y'], ord=1, axis=1)[:,None] + 1.0
-        q2 += norm(np.einsum('km,m->km', c['Y'], c['M']), ord=1, axis=1)[:,None] + 1.0
+        q2[:,c['inpaint_nloc']] += norm(np.einsum('km,m->km', c['Y'], c['M']),
+                                        ord=1, axis=1)[:,None] + 1.0
         y[y.data > np.spacing(1)] = 1.0/y[y.data > np.spacing(1)]
 
         # u1 = b q0' - q1
@@ -192,9 +202,10 @@ class MyPDHGModel(PDHGModelHARDI):
         # v = Y'q1 + M Y'q2
         # v += D' p (where D' = -div with Dirichlet boundary)
         u1_flat += c['b_precond']*np.abs(c['b'])[:,None] + 1.0
-        u2 += 1.0
+        u2[:,c['inpaint_nloc']] += 1.0
         v += norm(c['Y'], ord=1, axis=0)[:,None]
-        v += norm(np.einsum('m,km->km', c['M'], c['Y']), ord=1, axis=0)[:,None]
+        v[:,c['inpaint_nloc']] += norm(np.einsum('m,km->km', c['M'], c['Y']),
+                                       ord=1, axis=0)[:,None]
         divergence(p, vtmp, np.ones(v.shape[0]), c['avgskips'], precond=True)
         x[x.data > np.spacing(1)] = 1.0/x[x.data > np.spacing(1)]
 
@@ -230,8 +241,10 @@ class MyPDHGModel(PDHGModelHARDI):
         q1grad -= u1.reshape(l_labels, n_image)
 
         # q2grad = YMv - u2
-        np.einsum('km,mi->ki', c['Y'], np.einsum('m,mi->mi', c['M'], v), out=q2grad)
-        q2grad -= u2
+        np.einsum('km,mi->ki', c['Y'],
+            np.einsum('m,mi->mi', c['M'], v[:,c['inpaint_nloc']]),
+            out=q2grad[:,c['inpaint_nloc']])
+        q2grad[:,c['inpaint_nloc']] -= u2[:,c['inpaint_nloc']]
 
     def linop_adjoint(self, xgrad, y):
         """ Apply the adjoint linear operator in the model to y
@@ -256,11 +269,12 @@ class MyPDHGModel(PDHGModelHARDI):
         u1grad_flat -= q1
 
         # u2grad = -q2
-        u2grad[:] = -q2
+        u2grad[:,c['inpaint_nloc']] = -q2[:,c['inpaint_nloc']]
 
         # vgrad = Y'q1 + M Y'q2
         np.einsum('km,ki->mi', c['Y'], q1, out=vgrad)
-        vgrad += np.einsum('m,mi->mi', c['M'], np.einsum('km,ki->mi', c['Y'], q2))
+        vgrad[:,c['inpaint_nloc']] += np.einsum('m,mi->mi', c['M'],
+            np.einsum('km,ki->mi', c['Y'], q2[:,c['inpaint_nloc']]))
 
         # vgrad += D' p (where D' = -div with Dirichlet boundary)
         vtmp = vgrad.reshape((l_shm,)+imagedims)
@@ -273,8 +287,10 @@ class MyPDHGModel(PDHGModelHARDI):
         u1[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
 
         u2tau = tau['u2'] if 'precond' in c else tau
-        u2[:] = 1.0/(1.0 + u2tau)*np.fmax(u2 + u2tau*c['fl'], \
-            np.fmin(u2 + u2tau*c['fu'], (1.0 + u2tau)*u2))
+        u2[:,c['inpaint_nloc']] = (1.0/(1.0 + u2tau*c['b'][:,None]) * \
+            np.fmax(u2 + u2tau*c['b'][:,None]*c['fl'],
+                np.fmin(u2 + u2tau*c['b'][:,None]*c['fu'],
+                    (1.0 + u2tau*c['b'][:,None])*u2)))[:,c['inpaint_nloc']]
 
     def prox_dual(self, y, sigma):
         p, q0, q1, q2 = y.vars()

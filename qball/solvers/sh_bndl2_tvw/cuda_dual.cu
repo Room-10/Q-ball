@@ -143,15 +143,17 @@ __global__ void linop2(double *x, double *ygrad)
         }
         q1grad[idx] = newval;
 
-        // q2grad[k,i]
-        idx = k*n_image + i;
-        newval = -u2[idx];
+        if (inpaint_nloc[i]) {
+            // q2grad[k,i]
+            idx = k*n_image + i;
+            newval = -u2[idx];
 
-        // q2grad = Y M v - u2
-        for (aa = 0; aa < l_shm; aa++) {
-            newval += Y[k*l_shm + aa]*M[aa]*v[aa*n_image + i];
+            // q2grad = Y M v - u2
+            for (aa = 0; aa < l_shm; aa++) {
+                newval += Y[k*l_shm + aa]*M[aa]*v[aa*n_image + i];
+            }
+            q2grad[idx] = newval;
         }
-        q2grad[idx] = newval;
     }
 }
 

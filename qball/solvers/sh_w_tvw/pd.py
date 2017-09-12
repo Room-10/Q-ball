@@ -11,15 +11,18 @@ from numpy.linalg import norm
 import logging
 
 def qball_regularization(f, gtab, sampling_matrix,
-                         lbd=10.0, dataterm="W1", gradnorm="frobenius", **kwargs):
+                         lbd=10.0, dataterm="W1", gradnorm="frobenius",
+                         constraint_u=None, inpaintloc=None, **kwargs):
     solver = MyPDHGModel(f, gtab, sampling_matrix,
-                         dataterm=dataterm, gradnorm=gradnorm, lbd=lbd)
+                         dataterm=dataterm, gradnorm=gradnorm, lbd=lbd,
+                         constraint_u=constraint_u, inpaintloc=inpaintloc)
     details = solver.solve(**kwargs)
     return solver.state, details
 
 class MyPDHGModel(PDHGModelHARDI):
     def __init__(self, f, gtab, sampling_matrix,
-                       dataterm="W1", gradnorm="frobenius", constraint_u=None, **kwargs):
+                       dataterm="W1", gradnorm="frobenius",
+                       constraint_u=None, inpaintloc=None, **kwargs):
         PDHGModelHARDI.__init__(self, f, gtab, **kwargs)
 
         c = self.constvars
@@ -50,6 +53,10 @@ class MyPDHGModel(PDHGModelHARDI):
             c['constraint_u'] = constraint_u
         uconstrloc = np.any(np.logical_not(np.isnan(c['constraint_u'])), axis=0)
         c['uconstrloc'] = uconstrloc
+
+        if inpaintloc is None:
+            inpaintloc = np.zeros(imagedims)
+        c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
 
         c['dataterm']= dataterm
         self.gpu_constvars['dataterm']= dataterm[0].upper()
@@ -155,13 +162,13 @@ class MyPDHGModel(PDHGModelHARDI):
         if c['dataterm'] == "quadratic":
             # obj_p = 0.5*<u-f,u-f>_b + \sum_ij |A^j' w^ij|
             umf_flat = (0.5*(u - c['f'])**2).reshape(u.shape[0], -1)
-            result = np.einsum('k,ki->', c['b'], umf_flat)
+            result = np.einsum('k,ki->', c['b'], umf_flat[:,c['inpaint_nloc']])
         elif c['dataterm'] == "W1":
             # obj_p = \sum_ij |A^j' w0^ij| + \sum_ij |A^j' w^ij|
             # the first part converges to the W^1-distance eventually
             g0_norms = e['g_norms'].copy()
             norms_nuclear(g0grad[:,:,:,np.newaxis], g0_norms)
-            result = g0_norms.sum()
+            result = g0_norms[c['inpaint_nloc'],:].sum()
 
         obj_p = result + c['lbd']*e['g_norms'].sum()
 
@@ -172,8 +179,9 @@ class MyPDHGModel(PDHGModelHARDI):
                  + norm(np.fmax(0.0, -u.ravel()), ord=np.inf)
         if c['dataterm'] == "W1":
             # infeas_p += |diag(b) (u-f) - P'B'w0|
-            f_flat = c['f'].reshape(c['f'].shape[0], -1)
-            p0tmp = p0grad - np.einsum('k,ki->ki', c['b'], f_flat)
+            f_flat = c['f'].reshape(c['f'].shape[0], -1)[:,c['inpaint_nloc']]
+            p0tmp = p0grad[:,c['inpaint_nloc']] - \
+                np.einsum('k,ki->ki', c['b'], f_flat)
             infeas_p += norm(p0tmp.ravel(), ord=np.inf)
 
         return obj_p, infeas_p
@@ -193,16 +201,16 @@ class MyPDHGModel(PDHGModelHARDI):
 
         if c['dataterm'] == "quadratic":
             # obj_d = -\sum_i q0_i + 0.5*b*[f^2 - min(0, q0 + D'p - f)^2]
-            f_flat = c['f'].reshape(l_labels, -1)
-            u_flat = ugrad.reshape(l_labels, -1)
+            f_flat = c['f'].reshape(l_labels, -1)[:,c['inpaint_nloc']]
+            u_flat = ugrad.reshape(l_labels, -1)[:,c['inpaint_nloc']]
             umf_flat = u_flat - np.einsum('k,ki->ki', c['b'], f_flat)
             result = np.einsum('k,ki->', 0.5*c['b'], f_flat**2) \
                     - np.einsum('k,ki->', 0.5/c['b'], np.fmin(0.0, umf_flat)**2)
         elif c['dataterm'] == "W1":
             # obj_d = -\sum_i q0_i - <f,p0>_b
-            f_flat = c['f'].reshape(l_labels, -1)
-            result = -np.einsum('ki,ki->', f_flat,
-                np.einsum('k,ki->ki', c['b'], p0))
+            f_flat = c['f'].reshape(c['f'].shape[0], -1)
+            result = -np.einsum('ki,ki->', f_flat[:,c['inpaint_nloc']],
+                np.einsum('k,ki->ki', c['b'], p0[:,c['inpaint_nloc']]))
 
         obj_d = -np.sum(q0)*c['b_precond'] + result
 
@@ -216,7 +224,7 @@ class MyPDHGModel(PDHGModelHARDI):
             g0_norms = e['g_norms'].copy()
             norms_spectral(g0[:,:,:,np.newaxis], g0_norms)
             infeas_d += norm(w0grad.ravel(), ord=np.inf) \
-                     + norm(np.fmax(0.0, g0_norms - 1.0), ord=np.inf) \
+                     + norm(np.fmax(0.0, g0_norms[c['inpaint_nloc'],:] - 1.0), ord=np.inf) \
                      + norm(np.fmax(0.0, -ugrad.ravel()), ord=np.inf)
 
         return obj_d, infeas_d
@@ -256,7 +264,7 @@ class MyPDHGModel(PDHGModelHARDI):
         # w^ij = A^j g^ij - B^j P^j p_t^i
         u_flat += c['b_precond']*np.abs(c['b'])[:,None] + 1.0
         if c['dataterm'] == "W1":
-            u_flat += np.abs(c['b'])[:,None]
+            u_flat[:,c['inpaint_nloc']] += np.abs(c['b'])[:,None]
             w0 += norm(c['A'], ord=1, axis=2)[None,:,:]
             w0 += norm(c['B'], ord=1, axis=2)[None,:,:]
         divergence(p, u, c['b'], c['avgskips'], precond=True)
@@ -304,11 +312,17 @@ class MyPDHGModel(PDHGModelHARDI):
 
         if c['dataterm'] == "W1":
             # p0grad = diag(b) u
-            np.einsum('k,ki->ki', c['b'], u.reshape(l_labels, -1), out=p0grad)
+            np.einsum('k,ki->ki', c['b'],
+                u.reshape(l_labels, -1)[:,c['inpaint_nloc']],
+                out=p0grad[:,c['inpaint_nloc']])
+
             # p0grad^i += - P^j' B^j' w0^ij
-            apply_PB(p0grad[:,None,:], c['P'], c['B'], w0[:,:,:,None])
+            apply_PB(p0grad[:,None,c['inpaint_nloc']], c['P'], c['B'],
+                w0[c['inpaint_nloc'],:,:,None])
+
             # g0grad^ij += A^j' w0^ij
-            np.einsum('jlm,ijl->ijm', c['A'], w0, out=g0grad)
+            np.einsum('jlm,ijl->ijm', c['A'], w0[c['inpaint_nloc'],:,:],
+                out=g0grad[c['inpaint_nloc'],:,:])
 
     def linop_adjoint(self, xgrad, y):
         """ Apply the adjoint linear operator in the model to y
@@ -335,13 +349,16 @@ class MyPDHGModel(PDHGModelHARDI):
 
         if c['dataterm'] == "W1":
             # ugrad += diag(b) p0
-            ugrad_flat += np.einsum('k,ki->ki', c['b'], p0)
+            ugrad_flat[:,c['inpaint_nloc']] \
+                += np.einsum('k,ki->ki', c['b'], p0)[:,c['inpaint_nloc']]
 
             # w0grad^ij = A^j g0^ij
-            np.einsum('jlm,ijm->ijl', c['A'], g0, out=w0grad)
+            np.einsum('jlm,ijm->ijl', c['A'], g0[c['inpaint_nloc'],:,:],
+                                      out=w0grad[c['inpaint_nloc'],:,:])
 
             # w0grad^ij += -B^j P^j p0^i
-            w0grad -= np.einsum('jlm,jmi->ijl', c['B'], p0[c['P']])
+            w0grad[c['inpaint_nloc'],:,:] -= \
+                np.einsum('jlm,jmi->ijl', c['B'], p0[:,c['inpaint_nloc']][c['P']])
 
         # ugrad += diag(b) D' p (where D' = -div with Dirichlet boundary)
         divergence(p, ugrad, c['b'], c['avgskips'])
@@ -361,9 +378,9 @@ class MyPDHGModel(PDHGModelHARDI):
 
         if c['dataterm'] == "quadratic":
             l_labels = c['l_labels']
-            u_flat = u.reshape(l_labels, -1)
-            f_flat = c['f'].reshape(l_labels, -1)
-            utau = tau['u'].reshape(l_labels, -1) if 'precond' in c else tau
+            u_flat = u.reshape(l_labels, -1)[:,c['inpaint_nloc']]
+            f_flat = c['f'].reshape(l_labels, -1)[:,c['inpaint_nloc']]
+            utau = tau['u'].reshape(l_labels, -1)[:,c['inpaint_nloc']] if 'precond' in c else tau
             u_flat += utau*np.einsum('k,ki->ki', c['b'], f_flat)
             u_flat *= 1.0/(1.0 + utau*c['b'][:,None])
 
@@ -374,7 +391,6 @@ class MyPDHGModel(PDHGModelHARDI):
         p, g, q0, q1, p0, g0 = y.vars()
         c = self.constvars
         e = self.extravars
-        f_flat = c['f'].reshape(c['f'].shape[0], -1)
 
         project_gradients(g, c['lbd'], e['g_norms'], c['gradnorm'])
 
@@ -384,5 +400,6 @@ class MyPDHGModel(PDHGModelHARDI):
         if c['dataterm'] == "W1":
             project_gradients(g0[:,:,:,np.newaxis], 1.0, e['g_norms'])
 
-            p0sigma = sigma['p0'] if 'precond' in c else sigma
-            p0 -= p0sigma*np.einsum('k,ki->ki', c['b'], f_flat)
+            f_flat = c['f'].reshape(c['f'].shape[0], -1)[:,c['inpaint_nloc']]
+            p0sigma = sigma['p0'][:,c['inpaint_nloc']] if 'precond' in c else sigma
+            p0[:,c['inpaint_nloc']] -= p0sigma*np.einsum('k,ki->ki', c['b'], f_flat)

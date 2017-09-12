@@ -44,8 +44,8 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
     q4 = cvxVariable(l_labels, n_image)
 
     obj = cvx.Maximize(
-        cvx.vec(q3).T*cvx.vec(fl)
-        -cvx.vec(q4).T*cvx.vec(fu)
+        cvx.vec(q3).T*cvx.vec(cvx.diag(b_sph.b)*fl)
+        - cvx.vec(q4).T*cvx.vec(cvx.diag(b_sph.b)*fu)
         - cvx.sum_entries(q0)
     )
 
@@ -55,9 +55,9 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
     for i in range(n_image):
         for k in range(l_labels):
             constraints.append(0 <= q3[k,i])
-            constraints.append(q3[k,i] <= 1000)
+            constraints.append(q3[k,i] <= 1)
             constraints.append(0 <= q4[k,i])
-            constraints.append(q4[k,i] <= 1000)
+            constraints.append(q4[k,i] <= 1)
             constraints.append(q4[k,i] - q3[k,i] - q2[k,i] == 0)
     for i in range(n_image):
         constraints.append(sum(cvx.sum_squares(p[k][:,i]) for k in range(l_shm)) <= lbd**2)

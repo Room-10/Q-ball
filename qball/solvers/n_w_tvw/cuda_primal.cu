@@ -97,7 +97,7 @@ __global__ void linop_adjoint2(double *xgrad, double *y)
     wgrad[idx] = newval;
 
 #if 'W' == dataterm
-    if (t == 0) {
+    if (t == 0 && inpaint_nloc[i]) {
         SUBVAR_x_w0(w0grad,xgrad)
         SUBVAR_y_p0(p0,y)
         SUBVAR_y_g0(g0,y)
@@ -152,8 +152,10 @@ __global__ void linop_adjoint3(double *xgrad, double *y)
     newval += b[k]*(b_precond*q[i]);
 #if 'W' == dataterm
     SUBVAR_y_p0(p0,y)
-    // ugrad += diag(b) p0
-    newval += b[k]*p0[idx];
+    if(inpaint_nloc[i]) {
+        // ugrad += diag(b) p0
+        newval += b[k]*p0[idx];
+    }
 #endif
     ugrad[idx] = newval;
 }
@@ -190,21 +192,25 @@ __global__ void prox_primal(double *x, double tau)
     } else {
         // ~uconstrloc
         newval = u[idx];
+
+        if (inpaint_nloc[i]) {
 #if 'Q' == dataterm
 #ifdef precond
-        SUBVAR_x_u(utau,xtau)
-        double tau = utau[idx];
+            SUBVAR_x_u(utau,xtau)
+            double tau = utau[idx];
 #endif
-        // u = 1/(1 + tau*diag(b))*(u + tau*diag(b) f)
-        newval = 1.0/(1.0 + tau*b[k])*(newval + tau*b[k]*f[idx]);
+            // u = 1/(1 + tau*diag(b))*(u + tau*diag(b) f)
+            newval = 1.0/(1.0 + tau*b[k])*(newval + tau*b[k]*f[idx]);
 #elif 'L' == dataterm
 #ifdef precond
-        SUBVAR_x_u(utau,xtau)
-        double tau = utau[idx];
+            SUBVAR_x_u(utau,xtau)
+            double tau = utau[idx];
 #endif
-        // u -= tau*diag(b) s
-        newval -= tau*b[k]*f[idx];
+            // u -= tau*diag(b) s
+            newval -= tau*b[k]*f[idx];
 #endif
+        }
+
         // u = max(0, u)
         newval = fmax(0.0,  newval);
     }

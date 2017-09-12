@@ -134,8 +134,10 @@ __global__ void linop_adjoint3(double *xgrad, double *y)
         newval -= q1[idx];
         u1grad[idx] = newval;
 
-        // u2grad = -q2
-        u2grad[idx] = -q2[idx];
+        if (inpaint_nloc[i]) {
+            // u2grad = -q2
+            u2grad[idx] = -q2[idx];
+        }
     }
 
     if (k == 0) {
@@ -143,11 +145,20 @@ __global__ void linop_adjoint3(double *xgrad, double *y)
         idx = m*n_image + i;
         newval = 0.0;
 
-        // vgrad^i = Y'q1^i + M Y'q2^i
+        // vgrad^i = Y'q1^i
         for (kk = 0; kk < l_labels; kk++) {
             // km,ki->mi
-            newval += Y[kk*l_shm + m]*(q1[kk*n_image + i] + M[m]*q2[kk*n_image + i]);
+            newval += Y[kk*l_shm + m]*q1[kk*n_image + i];
         }
+
+        if (inpaint_nloc[i]) {
+            // vgrad^i += M Y'q2^i
+            for (kk = 0; kk < l_labels; kk++) {
+                // km,ki->mi
+                newval += Y[kk*l_shm + m]*M[m]*q2[kk*n_image + i];
+            }
+        }
+
         vgrad[idx] = newval;
     }
 }
@@ -190,17 +201,16 @@ __global__ void prox_primal(double *x, double tau)
     }
     u1[idx] = newval;
 
-    // u2[k,i]
-    idx = k*n_image + i;
-    newval = u2[idx];
-
+    if (inpaint_nloc[i]) {
+        // u2[k,i]
+        idx = k*n_image + i;
+        newval = u2[idx];
 #ifdef precond
-    SUBVAR_x_u2(u2tau,xtau)
-    double tau = u2tau[idx];
+        SUBVAR_x_u2(u2tau,xtau)
+        double tau = u2tau[idx];
 #endif
-
-    // u2 = 1/(1 + tau) max(u2 + tau*fl, min(u2 + tau*fu, (1 + tau)*u2))
-    u2[idx] = 1.0/(1.0 + tau*b[k])*fmax(newval + tau*b[k]*fl[idx],
-        fmin(newval + tau*b[k]*fu[idx], (1 + tau*b[k])*newval));
-
+        // u2 = 1/(1 + tau) max(u2 + tau*fl, min(u2 + tau*fu, (1 + tau)*u2))
+        u2[idx] = 1.0/(1.0 + tau*b[k])*fmax(newval + tau*b[k]*fl[idx],
+            fmin(newval + tau*b[k]*fu[idx], (1 + tau*b[k])*newval));
+    }
 }
