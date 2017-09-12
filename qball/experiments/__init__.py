@@ -28,8 +28,8 @@ class Experiment(object):
                                    + "Existing data will be loaded and used.")
         parser.add_argument('--resume', action="store_true", default=False,
                             help="Continue at last state.")
-        parser.add_argument('--batch', action="store_true", default=False,
-                            help="Activate batch processing (no plot).")
+        parser.add_argument('--plot', metavar='PLOT_MODE', default="show",
+                            type=str, help="Plot mode (show|hide|no).")
         parser.add_argument('--cvx', action="store_true", default=False,
                             help="Use CVX as solver engine.")
         parser.add_argument('--seed', metavar="SEED", default=None, type=int,
@@ -46,7 +46,7 @@ class Experiment(object):
         self.user_params = eval("dict(%s)" % parsed_args.params)
         self.cvx = parsed_args.cvx
         self.resume = parsed_args.resume
-        self.interactive = not parsed_args.batch
+        self.plot_mode = parsed_args.plot
 
         if parsed_args.seed is not None:
             np.random.seed(seed=parsed_args.seed)
@@ -225,14 +225,15 @@ class QBallExperiment(Experiment):
         return r
 
     def plot(self):
-        if not self.interactive:
-            return False
+        if self.plot_mode == "no":
+            return
 
         p = self.params['plot']
 
-        logging.info("Plotting results...")
-        r = self.prepare_plot([self.fin_orig, self.fin, self.upd])
-        fvtk.show(r, size=(1024, 768))
+        if self.plot_mode == "show":
+            logging.info("Plotting results...")
+            r = self.prepare_plot([self.fin_orig, self.fin, self.upd])
+            fvtk.show(r, size=(1024, 768))
 
         logging.info("Recording plot...")
         p['records'] = [p['slice']] if len(p['records']) == 0 else p['records']
@@ -242,7 +243,7 @@ class QBallExperiment(Experiment):
             (self.fin_orig, "fin_orig")
         ]
         for img, name in imgdata:
-            for i,s in enumerate(self.params['plot']['records']):
+            for i,s in enumerate(p['records']):
                 fname = os.path.join(self.output_dir, "plot-%s-%d.png" % (name,i))
                 r = self.prepare_plot(img, p_slice=s)
                 fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname=fname)
