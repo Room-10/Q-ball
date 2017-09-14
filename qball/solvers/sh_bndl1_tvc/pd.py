@@ -130,8 +130,8 @@ class MyPDHGModel(PDHGModelHARDI):
         #   q0grad = b'u1
         #   q1grad = Yv - u1
         #   q2grad = YMv - u2
-        #   q3grad = -u2
-        #   q4grad = u2
+        #   q3grad = -diag(b)*u2
+        #   q4grad = diag(b)*u2
         u1, u2, v = x.vars()
         pgrad, q0grad, q1grad, q2grad, q3grad, q4grad = ygrad.vars()
         c = self.constvars
@@ -158,7 +158,7 @@ class MyPDHGModel(PDHGModelHARDI):
     def obj_dual(self, xgrad, y):
         # xgrad is precomputed via self.linop_adjoint(xgrad, y)
         #   u1grad = b q0' - q1
-        #   u2grad = q4 - q3 - q2
+        #   u2grad = diag(b)*(q4 - q3) - q2
         #   vgrad = Y'q1 + M Y'q2 + D' p
         p, q0, q1, q2, q3, q4 = y.vars()
         u1grad, u2grad, vgrad = xgrad.vars()
@@ -176,7 +176,7 @@ class MyPDHGModel(PDHGModelHARDI):
               - np.sum(q0)*c['b_precond']
 
         # infeas_d = |Y'q1 + M Y'q2 + D' p| + |max(0, |p| - lbd)|
-        #          + |q4 - q3 - q2| + |max(0, -b q0' + q1)|
+        #          + |diag(b)*(q4 - q3) - q2| + |max(0, -b q0' + q1)|
         norms_frobenius(p, e['p_norms'])
         infeas_d = norm(vgrad.ravel(), ord=np.inf) \
                  + norm(u2grad[:,c['inpaint_nloc']].ravel(), ord=np.inf) \

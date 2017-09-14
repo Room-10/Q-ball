@@ -12,8 +12,9 @@ CHAPTERS := $(CHPT_DIR)/pre-model.tex \
             $(CHPT_DIR)/numerics-sh_l_tvw.tex \
             $(CHPT_DIR)/numerics-sh_l_tvc.tex \
             $(CHPT_DIR)/numerics-sh_bndl1_tvc.tex \
-            $(CHPT_DIR)/numerics-sh_bndl2_tvc.tex
-            
+            $(CHPT_DIR)/numerics-sh_bndl2_tvc.tex \
+            $(CHPT_DIR)/numerics-sh_bndl2_tvw.tex
+
 HEADER_DIR := .
 HEADERS := $(HEADER_DIR)/header.tex
 

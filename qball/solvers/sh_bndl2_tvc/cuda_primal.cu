@@ -123,7 +123,9 @@ __global__ void prox_primal(double *x, double tau)
     /* u1[~uconstrloc] = max(0, u1)
      * u1[uconstrloc] = constraint_u[uconstrloc]
      *
-     * u2 = 1/(1 + tau) max(u2 + tau*fl, min(u2 + tau*fu, (1 + tau)*u2))
+     * u2 = 1/(1 + tau*diag(b)) max(u2 + tau*diag(b)*fl,
+     *                              min(u2 + tau*diag(b)*fu,
+     *                                      (1 + tau*diag(b))*u2))
      */
 
     SUBVAR_x_u1(u1,x)
@@ -160,7 +162,9 @@ __global__ void prox_primal(double *x, double tau)
         SUBVAR_x_u2(u2tau,xtau)
         double tau = u2tau[idx];
 #endif
-        // u2 = 1/(1 + tau) max(u2 + tau*fl, min(u2 + tau*fu, (1 + tau)*u2))
+        // u2 = 1/(1 + tau*diag(b)) max(u2 + tau*diag(b)*fl,
+        //                              min(u2 + tau*diag(b)*fu,
+        //                                      (1 + tau*diag(b))*u2))
         u2[idx] = 1.0/(1.0 + tau*b[k])*fmax(newval + tau*b[k]*fl[idx],
             fmin(newval + tau*b[k]*fu[idx], (1 + tau*b[k])*newval));
     }

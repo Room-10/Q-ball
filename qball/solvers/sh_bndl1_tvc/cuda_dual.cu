@@ -112,7 +112,7 @@ __global__ void linop2(double *x, double *ygrad)
         }
         q2grad[idx] = newval;
 
-        // q3grad = -u2, q4grad = u2
+        // q3grad = -diag(b)*u2, q4grad = diag(b)*u2
         q3grad[idx] = -b[k]*u2[idx];
         q4grad[idx] = b[k]*u2[idx];
     }

@@ -1,22 +1,23 @@
 
-\subsection{Ouyang with confidence-interval-based fidelity term and L2 penalty}
+\subsection{$\TV_{W_1}$ with confidence-interval-based fidelity term and L2 penalty}
 
-We combine the regularizer from Ouyang '14 with a confidence-interval based
+We combine our Wasserstein TV regularizer with a confidence-interval based
 fidelity term and $L_2$ penalty outside the interval.
 
 \paragraph{Primal and dual variables}
-$\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
+$\mat{x} = (u_1,u_2,v,w)$, $\mat{y} = (p,g,q_0,q_1,q_2)$.
 
 \paragraph{Saddle point form}
 \begin{align*}
-    \min_{u_1,u_2,v} \max_{p} \quad
+    \min_{u_1,u_2,v} \max_{p,g} \quad
         & \frac{1}{2} \|\max(0, f_1 - u_2)\|_2^2
           + \frac{1}{2} \|\max(0, u_2 - f_2)\|_2^2
-          + \langle Dv, p \rangle \\
+          + \langle Du_1, p \rangle_b \\
     \text{s.t.}\quad
-        & \Psi M v^i = u_2^i, ~\Psi v^i = u_1^i ~\forall i, \\
-        & u_1^i \geq 0, ~\langle u_1^i, b \rangle = 1,
-          ~\|p^{i}\|_{2} \leq \lambda ~\forall i.
+        & \Psi M v^i = u_2^i, ~\Psi v^i = u_1^i ~\forall i,
+          ~u_1^i \geq 0, ~\langle u_1^i, b \rangle = 1, \\
+        & A^j g^{ij}_t = B^j P^j p^i_t,
+          ~\|g^{ij}\|_{\sigma,\infty} \leq \lambda ~\forall i,j,t.
 \end{align*}
 
 \paragraph{Saddle point form (long version)}
@@ -24,12 +25,13 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
     \min_{\mat{x}} \max_{\mat{y}} \quad
         & \frac{1}{2} \|\max(0, f_1 - u_2)\|_2^2
             + \frac{1}{2} \|\max(0, u_2 - f_2)\|_2^2
-            + \langle Dv, p \rangle \\
+            + \langle Du_1, p \rangle_b
+            + \sum_{i,j,t} \langle w^{ij}_t, A^j g^{ij}_t - B^j P^j p^i_t \rangle\\
         &\quad + \sum_{i} q_0^i \cdot (b^T u_1^i - 1)
             + \sum_{i} \langle q_1^i, \Psi v^i - u_1^i \rangle
             + \sum_{i} \langle q_2^i, \Psi M v^i - u_2^i \rangle \\
     \text{s.t.}\quad
-        & u_1^i \geq 0, ~\|p^{i}\|_{2} \leq \lambda ~\forall i.
+        & u_1^i \geq 0, ~\|g^{ij}\|_{\sigma,\infty} \leq \lambda ~\forall i,j.
 \end{align*}
 
 \paragraph{Primal formulation}
@@ -37,10 +39,11 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
     \min_{\mat{x}} \quad
         & \frac{1}{2} \|\max(0, f_1 - u_2)\|_2^2
             + \frac{1}{2} \|\max(0, u_2 - f_2)\|_2^2
-            + \lambda \sum_{i} \| (D v)^{i} \|_{2} \\
+            + \lambda \sum_{i,j} \| A^{jT} w^{ij} \|_{\sigma,1} \\
     \text{s.t.}\quad
         & \Psi M v^i = u_2^i, ~\Psi v^i = u_1^i,
-          ~u_1^i \geq 0, ~\langle u_1^i, b \rangle = 1 ~\forall i
+          ~u_1^i \geq 0, ~\langle u_1^i, b \rangle = 1 ~\forall i, \\
+        & b_k (\partial_t u_1)_k^i = \sum_j (P^{jT}B^{jT}w^{ij}_t)_{k} ~\forall i,k,t.
 \end{align*}
 
 \paragraph{Dual formulation}
@@ -51,8 +54,9 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
                 + \max\{f_1^{ik} q_2^{ik},f_2^{ik} q_2^{ik}\}
         \right] - \sum_i q_0^i  \\
     \text{s.t.}\quad
-        & \|p^{i}\|_{2} \leq \lambda,
-          ~q_0^i b^k - q_1^{ki} \geq 0 ~\forall i, k, \\
+        & \|g^{ij}\|_{\sigma,\infty} \leq \lambda,
+          ~A^j g^{ij}_t = B^j P^j p^i_t ~\forall i,j,t, \\
+        & q_0^i b^k - q_1^{ki} \geq 0 ~\forall i, k, \\
         & \Psi^T q_1^i + M \Psi^T q_2^i - (\divergence p)^i = 0 ~\forall i.
 \end{align*}
 
@@ -64,23 +68,26 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2)$.
         + \delta_{\{u_1 \geq 0\}}, \\
     F^*(\mat{y}) &=
         \sum_{i} q_0^i
-        + \sum_{i} \delta_{\{\|p^{i}\|_{2} \leq \lambda\}}, \\
+        + \sum_{i,j} \delta_{\{\|g^{ij}\|_{\sigma,\infty} \leq \lambda\}}, \\
     K(\mat{x}) &= (
-        Dv,
+        Du_1 - \sum_j P^{jT}B^{jT}w^{j},
+        A^T w,
         b^T u_1,
         \Psi v^i - u_1^i,
         \Psi M v^i - u_2^i
     ), \\
     K^*(\mat{y}) &= (
-        q_0 \otimes b - q_1,
+        q_0 \otimes b - \beta \divergence{p} - q_1,
         -q_2,
-        \Psi^T q_1^i + M \Psi^T q_2^i - \divergence{p}
+        \Psi^T q_1^i + M \Psi^T q_2^i,
+        A g - PBp
     ),
 \end{align*}
 \begin{align*}
     \Prox_{\sigma F*}(\bar{\mat{y}})
     &= (
-        \proj_{\lambda,2}(\bar{p}),
+        \bar{p},
+        \proj_{\lambda,\infty}(\bar{g}),
         \bar{q_0}-\sigma e,
         \bar{q_1},
         \bar{q_2}

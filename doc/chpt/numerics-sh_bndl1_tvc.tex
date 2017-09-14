@@ -20,7 +20,7 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2,q_3,q_4)$.
 \paragraph{Saddle point form (long version)}
 \begin{align*}
     \min_{\mat{x}} \max_{\mat{y}} \quad
-        & \langle q_3, f_1 - u_2 \rangle + \langle q_4, u_2 - f_2 \rangle
+        & \langle q_3, f_1 - u_2 \rangle_b + \langle q_4, u_2 - f_2 \rangle_b
             + \langle Dv, p \rangle
             + \sum_{i} q_0^i \cdot (b^T u_1^i - 1) \\
         &\quad + \sum_{i} \langle q_1^i, \Psi v^i - u_1^i \rangle
@@ -43,18 +43,18 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2,q_3,q_4)$.
 \paragraph{Dual formulation}
 \begin{align*}
     \max_{\mat{y}} \quad
-        & \langle q_3, f_1 \rangle - \langle q_4, f_2 \rangle - \sum_i q_0^i  \\
+        & \langle q_3, f_1 \rangle_b - \langle q_4, f_2 \rangle_b - \sum_i q_0^i  \\
     \text{s.t.}\quad
         & \|p^{i}\|_{2} \leq \lambda,
           ~q_0^i b^k - q_1^{ki} \geq 0 ~\forall i, k, \\
         & \Psi^T q_1^i + M \Psi^T q_2^i - (\divergence p)^i = 0,
-          ~q_4 - q_3 - q_2 = 0.
+          ~\beta (q_4 - q_3) - q_2 = 0.
 \end{align*}
 
 \paragraph{Proximal mappings}
 \begin{align*}
     G(\mat{x}) &= \delta_{\{u_1 \geq 0\}}, \\
-    F^*(\mat{y}) &= \langle q_4, f_2 \rangle - \langle q_3, f_1 \rangle
+    F^*(\mat{y}) &= \langle q_4, f_2 \rangle_b - \langle q_3, f_1 \rangle_b
         + \sum_{i} q_0^i
         + \sum_{i} \delta_{\{\|p^{i}\|_{2} \leq \lambda\}}
         + \delta_{\{0 \leq q_3 \leq 1\}} + \delta_{\{0 \leq q_4 \leq 1\}}, \\
@@ -63,12 +63,12 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2,q_3,q_4)$.
         b^T u_1,
         \Psi v^i - u_1^i,
         \Psi M v^i - u_2^i,
-        -u_2,
-        u_2
+        -\beta u_2,
+        \beta u_2
     ), \\
     K^*(\mat{y}) &= (
         q_0 \otimes b - q_1,
-        q_4 - q_3 - q_2,
+        \beta (q_4 - q_3) - q_2,
         \Psi^T q_1^i + M \Psi^T q_2^i - \divergence{p}
     ),
 \end{align*}
@@ -79,8 +79,8 @@ $\mat{x} = (u_1,u_2,v)$, $\mat{y} = (p,q_0,q_1,q_2,q_3,q_4)$.
         \bar{q_0}-\sigma e,
         \bar{q_1},
         \bar{q_2},
-        \proj_{[0,1]}(\bar{q_3} + \sigma f_1),
-        \proj_{[0,1]}(\bar{q_4} - \sigma f_2)
+        \proj_{[0,1]}(\bar{q_3} + \sigma \beta f_1),
+        \proj_{[0,1]}(\bar{q_4} - \sigma \beta f_2)
    ), \\
     \Prox_{\tau G}(\bar{\mat{x}})
     &= \left(
