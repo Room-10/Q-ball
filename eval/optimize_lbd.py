@@ -21,7 +21,7 @@ class LambdaOptimizer(object):
         if basedir is not None:
             self.basedir = basedir.rstrip("/")
         else:
-            exp_args = [self.model, '--batch']
+            exp_args = [self.model, '--plot','no']
             exp = self.experiment(exp_args)
             exp.load_imagedata()
             self.basedir = exp.output_dir
