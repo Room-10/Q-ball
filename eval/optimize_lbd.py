@@ -98,7 +98,7 @@ class LambdaOptimizer(object):
         exp_params = 'lbd=%f' % lbd
         if len(self.params) > 0:
             exp_params = '%s,%s' % (exp_params, self.params)
-        exp_args = [self.model, '--output', output_dir, '--batch']
+        exp_args = [self.model, '--output', output_dir, '--plot','no']
         exp_args += ['--params', exp_params]
         if self.resume:
             exp_args.append('--resume')
