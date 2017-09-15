@@ -40,7 +40,7 @@ def compute_bounds(b_sph, data, c=1.0):
     noise_l = np.percentile(samples, c/2, axis=0)
     noise_u = np.percentile(samples, 1.0-c/2, axis=0)
     
-    print('Noise in (',noise_l[0],noise_u[0],')')
+    print('Noise in (',noise_l[0],',',noise_u[0],')')
     
 #    print('Data')
 #    print(data[10,10,:])
@@ -53,8 +53,10 @@ def compute_bounds(b_sph, data, c=1.0):
     data_l_clipped = np.clip(data_l, np.spacing(1), 1-np.spacing(1))
     data_u_clipped = np.clip(data_u, np.spacing(1), 1-np.spacing(1))
 
-    fl = np.log(-np.log(data_u_clipped)).reshape(-1, l_labels).T
-    fu = np.log(-np.log(data_l_clipped)).reshape(-1, l_labels).T
+    fl[:] = np.log(-np.log(data_u_clipped)).reshape(-1, l_labels).T
+    fu[:] = np.log(-np.log(data_l_clipped)).reshape(-1, l_labels).T
+    
+    assert(fl.shape == (l_labels,n_image))
     
 #    for i in range(n_image):
 #        for k in range(l_labels):
