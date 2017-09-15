@@ -88,6 +88,7 @@ class _SH_HardiQballBaseModel(QballBaseModel):
 
     def _get_shm_coef(self, data, mask=None):
         """Returns the coefficients of the model"""
+        data = np.array(data, dtype=np.float64)
         data = data[..., self._where_dwi]
         data = data.clip(self.min, self.max)
         Minv = np.zeros(self._fit_matrix.shape)
