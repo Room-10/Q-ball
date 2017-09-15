@@ -55,17 +55,17 @@ class MyExperiment(QBallExperiment):
         },
         'sh_bndl1_tvc': {
             'step_factor': 0.1,
-            'step_bound': 0.0014, # 0.00105
+            'step_bound': 0.00139, # 0.00105
             # 'inpaintloc': inpaint_mask,
         },
         'sh_bndl2_tvc': {
             'step_factor': 0.1,
-            'step_bound': 0.0014, # 0.00105
+            'step_bound': 0.00139, # 0.00105
             # 'inpaintloc': inpaint_mask,
         },
         'sh_bndl2_tvw': {
             'step_factor': 0.033,
-            'step_bound': 0.0014, # 0.00105
+            'step_bound': 0.00139, # 0.00105
             # 'inpaintloc': inpaint_mask,
         },
     }
