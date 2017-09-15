@@ -2,7 +2,7 @@
 import numpy as np
 from dipy.segment.mask import median_otsu
 
-def compute_bounds(b_sph, data, c=1.0):
+def compute_bounds(b_sph, data, c=0.4):
     imagedims = data.shape[:-1]
     n_image = np.prod(imagedims)
     d_image = len(imagedims)
@@ -17,8 +17,8 @@ def compute_bounds(b_sph, data, c=1.0):
     loglog_data = np.log(-np.log(data_clipped))
     f[:] = loglog_data.reshape(-1, l_labels).T
 
-    3d_data = data[(slice(None),)*d_image + (None,)*(3-d_image) + (slice(None),)]
-    maskdata, mask = median_otsu(3d_data)
+    three_d_data = data[(slice(None),)*d_image + (None,)*(3-d_image) + (slice(None),)]
+    maskdata, mask = median_otsu(three_d_data)
 
     n_samples = np.sum(np.logical_not(mask))
     print('n_samples = ', n_samples)
