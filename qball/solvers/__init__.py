@@ -44,6 +44,7 @@ class PDHGModel(object):
                 i['alphak'] = 0.5
                 i['sigmak'] = i['tauk'] = np.sqrt(bnd)
                 i['res_pk'] = i['res_dk'] = 0.0
+                logging.info("Adaptive steps: %f" % (bnd,))
             else:
                 fact = step_factor # tau/sigma
                 c['sigma'] = np.sqrt(bnd/fact)
