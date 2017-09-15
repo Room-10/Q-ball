@@ -2,7 +2,7 @@
 import numpy as np
 from dipy.segment.mask import median_otsu
 
-def compute_bounds(b_sph, data, c=0.4):
+def compute_bounds(b_sph, data, c=1.0):
     imagedims = data.shape[:-1]
     n_image = np.prod(imagedims)
     d_image = len(imagedims)
@@ -40,12 +40,10 @@ def compute_bounds(b_sph, data, c=0.4):
     noise_l = np.percentile(samples, c/2, axis=0)
     noise_u = np.percentile(samples, 1.0-c/2, axis=0)
     
-    print('Noise')
-    print(noise_l[0])
-    print(noise_u[0])
+    print('Noise in (',noise_l[0],noise_u[0],')')
     
-    print('Data')
-    print(data[10,10,:])
+#    print('Data')
+#    print(data[10,10,:])
     
     data_l = data - noise_u
     data_u = data - noise_l
