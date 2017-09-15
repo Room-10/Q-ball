@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 
 import dipy.core.sphere
 from dipy.reconst.shm import CsaOdfModel
+from dipy.reconst.csdeconv import ConstrainedSphericalDeconvModel
 from dipy.viz import fvtk
 
 import logging
@@ -174,7 +175,13 @@ class QBallExperiment(Experiment):
         self.upd = self.upd.reshape(l_labels, -1)
         self.upd = np.array(self.upd.T, order='C').reshape(imagedims + (l_labels,))
 
-        basemodel = CsaOdfModel(self.gtab, **self.params['base'])
+        if 'csd_response' in self.params['fit'] \
+           and self.params['fit']['csd_response'] is not None:
+            logging.info("Using CSD for ground truth reconstruction.")
+            basemodel = ConstrainedSphericalDeconvModel(self.gtab, \
+                self.params['fit']['csd_response'])
+        else:
+            basemodel = CsaOdfModel(self.gtab, **self.params['base'])
         f = basemodel.fit(self.S_data).odf(self.qball_sphere)
         self.fin = np.clip(f, 0, np.max(f, -1)[..., None])
         f = basemodel.fit(self.S_data_orig).odf(self.qball_sphere)

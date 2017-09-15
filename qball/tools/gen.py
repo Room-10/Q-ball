@@ -1,5 +1,5 @@
 
-import os, warnings, logging
+import os, pickle, warnings, logging
 import numpy as np
 
 import nibabel as nib
@@ -42,6 +42,7 @@ def csd_response(gtab, data):
     response = recursive_response(gtab, data, mask=wm_mask, sh_order=8,
                       peak_thr=0.01, init_fa=0.08, init_trace=0.0021, iter=8,
                       convergence=0.001, parallel=True)
+    return response
 
 def synth_isbi2013(snr=30):
     supported_snrs = np.array([10,20,30])
@@ -59,17 +60,30 @@ def rw_stanford(snr=None, csd=False):
         img, gtab = read_stanford_hardi()
         assert(img.shape[-1] == gtab.bvals.size)
         data = img.get_data()
-        maskdata, mask = median_otsu(data, 3, 1, True,
-                                     vol_idx=range(10, 50), dilate=2)
 
-    S_data = np.array(maskdata[13:43, 44:74, 28], order='C')
+    if False:
+        # from dipy qbi-csa example (used for SSVM):
+        # http://nipy.org/dipy/examples_built/reconst_csa.html
+        maskdata, mask = median_otsu(data, median_radius=3, numpass=1,
+            autocrop=True, vol_idx=range(10, 50), dilate=2)
+        S_data = np.array(maskdata[13:43, 44:74, 28], order='C')
+    else:
+        # from dipy csd example:
+        # http://nipy.org/dipy/examples_built/reconst_csd.html
+        S_data = np.array(data[20:50, 55:85, 38], order='C')
+
     S_data_orig = S_data.copy()
     if snr is not None:
         S_data[:] = add_noise(S_data_orig, snr=snr)
 
     if csd:
-        logging.info("Estimating response function for CSD...")
-        resp = csd_response(gtab, data)
+        resp_file = "cache/resp-stanford_hardi.pickle"
+        try:
+            resp = pickle.load(open(resp_file, 'rb'))
+        except:
+            logging.info("No cached response function, estimating...")
+            resp = csd_response(gtab, data)
+            pickle.dump(resp, open(resp_file, 'wb'))
     else:
         resp = None
 
