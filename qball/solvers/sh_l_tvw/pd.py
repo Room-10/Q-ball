@@ -55,6 +55,7 @@ class MyPDHGModel(PDHGModelHARDI):
         if inpaintloc is None:
             inpaintloc = np.zeros(imagedims)
         c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
+        assert(c['inpaint_nloc'].shape == (n_image,))
 
         c['gradnorm']= gradnorm
         self.gpu_constvars['gradnorm']= gradnorm[0].upper()

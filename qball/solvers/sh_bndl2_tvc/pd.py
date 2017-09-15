@@ -52,6 +52,7 @@ class MyPDHGModel(PDHGModelHARDI):
         if inpaintloc is None:
             inpaintloc = np.zeros(imagedims)
         c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
+        assert(c['inpaint_nloc'].shape == (n_image,))
 
         e['p_norms'] = np.zeros((n_image,), order='C')
 

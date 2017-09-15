@@ -52,6 +52,7 @@ class MyPDHGModel(PDHGModelHARDI):
         if inpaintloc is None:
             inpaintloc = np.zeros(imagedims)
         c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
+        assert(c['inpaint_nloc'].shape == (n_image,))
 
         e['p_norms'] = np.zeros((n_image,), order='C')
 
@@ -254,14 +255,14 @@ class MyPDHGModel(PDHGModelHARDI):
 
         # q2grad = YMv - u2
         q2grad[:,c['inpaint_nloc']] = np.einsum('km,mi->ki', c['Y'],
-            np.einsum('m,mi->mi', c['M'],v[:,c['inpaint_nloc']]))
+            np.einsum('m,mi->mi', c['M'], v[:,c['inpaint_nloc']]))
         q2grad[:,c['inpaint_nloc']] -= u2[:,c['inpaint_nloc']]
 
         # q3grad = -diag(b)*u2, q4grad = diag(b)*u2
-        q3grad[:,c['inpaint_nloc']] = np.einsum('k,ki->ki', -c['b'],
-            u2[:,c['inpaint_nloc']])
-        q4grad[:,c['inpaint_nloc']] = np.einsum('k,ki->ki', c['b'],
-            u2[:,c['inpaint_nloc']])
+        q3grad[:,c['inpaint_nloc']] \
+            = np.einsum('k,ki->ki', -c['b'], u2[:,c['inpaint_nloc']])
+        q4grad[:,c['inpaint_nloc']] \
+            = np.einsum('k,ki->ki', c['b'], u2[:,c['inpaint_nloc']])
 
     def linop_adjoint(self, xgrad, y):
         """ Apply the adjoint linear operator in the model to y

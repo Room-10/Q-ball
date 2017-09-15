@@ -57,6 +57,7 @@ class MyPDHGModel(PDHGModelHARDI):
         if inpaintloc is None:
             inpaintloc = np.zeros(imagedims)
         c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
+        assert(c['inpaint_nloc'].shape == (n_image,))
 
         if dataterm not in ["W1","quadratic"]:
             raise Exception("Dateterm unknown: %s" % dataterm)
@@ -254,7 +255,8 @@ class MyPDHGModel(PDHGModelHARDI):
         q1 += norm(c['Y'], ord=1, axis=1)[:,None] + 1.0
         if c['dataterm'] == "W1":
             p0 += np.abs(c['b'])[:,None]
-            apply_PB(p0[:,None,:], c['P'], c['B'], w0[:,:,:,None], precond=True)
+            apply_PB(p0[:,None,:], c['P'], c['B'], w0[:,:,:,None],
+                     precond=True, inpaint_nloc=c['inpaint_nloc'])
             g0 += norm(c['A'], ord=1, axis=1)[None,:,:]
         y[y.data > np.spacing(1)] = 1.0/y[y.data > np.spacing(1)]
 
@@ -267,8 +269,8 @@ class MyPDHGModel(PDHGModelHARDI):
         u_flat += c['b_precond']*np.abs(c['b'])[:,None] + 1.0
         if c['dataterm'] == "W1":
             u_flat[:,c['inpaint_nloc']] += np.abs(c['b'])[:,None]
-            w0 += norm(c['A'], ord=1, axis=2)[None,:,:]
-            w0 += norm(c['B'], ord=1, axis=2)[None,:,:]
+            w0[c['inpaint_nloc'],:,:] += norm(c['A'], ord=1, axis=2)[None,:,:]
+            w0[c['inpaint_nloc'],:,:] += norm(c['B'], ord=1, axis=2)[None,:,:]
         divergence(p, u, c['b'], c['avgskips'], precond=True)
         v += norm(c['Y'], ord=1, axis=0)[:,None]
         w += norm(c['A'], ord=1, axis=2)[None,:,:,None]
@@ -318,12 +320,12 @@ class MyPDHGModel(PDHGModelHARDI):
                 u.reshape(l_labels, -1)[:,c['inpaint_nloc']])
 
             # p0grad^i += - P^j' B^j' w0^ij
-            apply_PB(p0grad[:,None,c['inpaint_nloc']], c['P'], c['B'],
-                w0[c['inpaint_nloc'],:,:,None])
+            apply_PB(p0grad[:,None,:], c['P'], c['B'], w0[:,:,:,None],
+                     inpaint_nloc=c['inpaint_nloc'])
 
             # g0grad^ij += A^j' w0^ij
-            g0grad[c['inpaint_nloc'],:,:] = np.einsum('jlm,ijl->ijm', c['A'],
-                                                    w0[c['inpaint_nloc'],:,:])
+            g0grad[c['inpaint_nloc'],:,:] \
+                = np.einsum('jlm,ijl->ijm', c['A'], w0[c['inpaint_nloc'],:,:])
 
     def linop_adjoint(self, xgrad, y):
         """ Apply the adjoint linear operator in the model to y
@@ -379,11 +381,11 @@ class MyPDHGModel(PDHGModelHARDI):
 
         if c['dataterm'] == "quadratic":
             l_labels = c['l_labels']
-            u_flat = u.reshape(l_labels, -1)[:,c['inpaint_nloc']]
+            u_flat = u.reshape(l_labels, -1)
             f_flat = c['f'].reshape(l_labels, -1)[:,c['inpaint_nloc']]
             utau = tau['u'].reshape(l_labels, -1)[:,c['inpaint_nloc']] if 'precond' in c else tau
-            u_flat += utau*np.einsum('k,ki->ki', c['b'], f_flat)
-            u_flat *= 1.0/(1.0 + utau*c['b'][:,None])
+            u_flat[:,c['inpaint_nloc']] += utau*np.einsum('k,ki->ki', c['b'], f_flat)
+            u_flat[:,c['inpaint_nloc']] *= 1.0/(1.0 + utau*c['b'][:,None])
 
         u[:] = np.fmax(0.0, u)
         u[:,c['uconstrloc']] = c['constraint_u'][:,c['uconstrloc']]
