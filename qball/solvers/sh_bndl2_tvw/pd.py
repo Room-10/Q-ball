@@ -272,9 +272,8 @@ class MyPDHGModel(PDHGModelHARDI):
         q1grad -= u1.reshape(l_labels, n_image)
 
         # q2grad = YMv - u2
-        np.einsum('km,mi->ki', c['Y'],
-            np.einsum('m,mi->mi', c['M'], v[:,c['inpaint_nloc']]),
-            out=q2grad[:,c['inpaint_nloc']])
+        q2grad[:,c['inpaint_nloc']] = np.einsum('km,mi->ki', c['Y'],
+            np.einsum('m,mi->mi', c['M'], v[:,c['inpaint_nloc']]))
         q2grad[:,c['inpaint_nloc']] -= u2[:,c['inpaint_nloc']]
 
     def linop_adjoint(self, xgrad, y):

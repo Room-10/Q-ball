@@ -253,16 +253,15 @@ class MyPDHGModel(PDHGModelHARDI):
         q1grad -= u1.reshape(l_labels, n_image)
 
         # q2grad = YMv - u2
-        np.einsum('km,mi->ki', c['Y'],
-            np.einsum('m,mi->mi', c['M'],v[:,c['inpaint_nloc']]),
-            out=q2grad[:,c['inpaint_nloc']])
+        q2grad[:,c['inpaint_nloc']] = np.einsum('km,mi->ki', c['Y'],
+            np.einsum('m,mi->mi', c['M'],v[:,c['inpaint_nloc']]))
         q2grad[:,c['inpaint_nloc']] -= u2[:,c['inpaint_nloc']]
 
         # q3grad = -diag(b)*u2, q4grad = diag(b)*u2
-        np.einsum('k,ki->ki', -c['b'], u2[:,c['inpaint_nloc']],
-                  out=q3grad[:,c['inpaint_nloc']])
-        np.einsum('k,ki->ki', c['b'], u2[:,c['inpaint_nloc']],
-                  out=q4grad[:,c['inpaint_nloc']])
+        q3grad[:,c['inpaint_nloc']] = np.einsum('k,ki->ki', -c['b'],
+            u2[:,c['inpaint_nloc']])
+        q4grad[:,c['inpaint_nloc']] = np.einsum('k,ki->ki', c['b'],
+            u2[:,c['inpaint_nloc']])
 
     def linop_adjoint(self, xgrad, y):
         """ Apply the adjoint linear operator in the model to y
@@ -287,8 +286,8 @@ class MyPDHGModel(PDHGModelHARDI):
         u1grad_flat -= q1
 
         # u2grad = diag(b)*(q4 - q3) - q2
-        np.einsum('k,ki->ki', c['b'], (q4 - q3)[:,c['inpaint_nloc']],
-                  out=u2grad[:,c['inpaint_nloc']])
+        u2grad[:,c['inpaint_nloc']] = np.einsum('k,ki->ki', c['b'],
+            (q4 - q3)[:,c['inpaint_nloc']])
         u2grad[:,c['inpaint_nloc']] -= q2[:,c['inpaint_nloc']]
 
         # vgrad = Y'q1 + M Y'q2
@@ -319,9 +318,9 @@ class MyPDHGModel(PDHGModelHARDI):
         fl_flat = c['fl'].reshape(c['fl'].shape[0], -1)[:,c['inpaint_nloc']]
         q3sigma = sigma['q3'][:,c['inpaint_nloc']] if 'precond' in c else sigma
         q3[:,c['inpaint_nloc']] += q3sigma*np.einsum('k,ki->ki', c['b'], fl_flat)
-        np.clip(q3[:,c['inpaint_nloc']], 0.0, 1.0, out=q3[:,c['inpaint_nloc']])
+        np.clip(q3, 0.0, 1.0, out=q3)
 
         fu_flat = c['fu'].reshape(c['fu'].shape[0], -1)[:,c['inpaint_nloc']]
         q4sigma = sigma['q4'][:,c['inpaint_nloc']] if 'precond' in c else sigma
         q4[:,c['inpaint_nloc']] -= q4sigma*np.einsum('k,ki->ki', c['b'], fu_flat)
-        np.clip(q4[:,c['inpaint_nloc']], 0.0, 1.0, out=q4[:,c['inpaint_nloc']])
+        np.clip(q4, 0.0, 1.0, out=q4)

@@ -53,6 +53,8 @@ class MyPDHGModel(PDHGModelHARDI):
         elif dataterm == "linear-precalc":
             """ Nothing to do, the provided f is the cost vector. """
             dataterm = "linear"
+        elif dataterm not in ["W1","quadratic"]:
+            raise Exception("Dateterm unknown: %s" % dataterm)
 
         if constraint_u is None:
             c['constraint_u'] = np.zeros((l_labels,) + imagedims, order='C')
@@ -314,17 +316,16 @@ class MyPDHGModel(PDHGModelHARDI):
 
         if c['dataterm'] == "W1":
             # p0grad = diag(b) u
-            np.einsum('k,ki->ki', c['b'],
-                u.reshape(l_labels, -1)[:,c['inpaint_nloc']],
-                out=p0grad[:,c['inpaint_nloc']])
+            p0grad[:,c['inpaint_nloc']] = np.einsum('k,ki->ki', c['b'],
+                u.reshape(l_labels, -1)[:,c['inpaint_nloc']])
 
             # p0grad^i += - P^j' B^j' w0^ij
             apply_PB(p0grad[:,None,c['inpaint_nloc']], c['P'], c['B'],
                 w0[c['inpaint_nloc'],:,:,None])
 
             # g0grad^ij += A^j' w0^ij
-            np.einsum('jlm,ijl->ijm', c['A'], w0[c['inpaint_nloc'],:,:],
-                out=g0grad[c['inpaint_nloc'],:,:])
+            g0grad[c['inpaint_nloc'],:,:] = np.einsum('jlm,ijl->ijm', c['A'],
+                                                    w0[c['inpaint_nloc'],:,:])
 
     def linop_adjoint(self, xgrad, y):
         """ Apply the adjoint linear operator in the model to y
@@ -353,8 +354,8 @@ class MyPDHGModel(PDHGModelHARDI):
                 += np.einsum('k,ki->ki', c['b'], p0)[:,c['inpaint_nloc']]
 
             # w0grad^ij = A^j g0^ij
-            np.einsum('jlm,ijm->ijl', c['A'], g0[c['inpaint_nloc'],:,:],
-                                      out=w0grad[c['inpaint_nloc'],:,:])
+            w0grad[c['inpaint_nloc'],:,:] = np.einsum('jlm,ijm->ijl', c['A'],
+                                                    g0[c['inpaint_nloc'],:,:])
 
             # w0grad^ij += -B^j P^j p0^i
             w0grad[c['inpaint_nloc'],:,:] -= \
