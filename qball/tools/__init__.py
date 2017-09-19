@@ -49,13 +49,13 @@ def plot_mesh3(ax, vecs, tris):
     tmp = np.tile(tris, (2,1))
 
     verts = np.dstack((vx[tmp].T, vy[tmp].T, vz[tmp].T))
-    green = np.array([[10., 250., 31., 200.]])/255.0
-    ax.add_collection3d(
-        Poly3DCollection(verts, facecolors='w', linewidth=1, alpha=0.5)
-    )
-    ax.add_collection3d(
-        Line3DCollection(verts, colors='k', linewidths=0.2, linestyle=':')
-    )
+    collection = Poly3DCollection(verts, linewidths=0.3, alpha=0.8)
+    collection.set_facecolor([1,1,1])
+    collection.set_edgecolor([0.5,0.5,0.5])
+    ax.add_collection3d(collection)
+    #ax.add_collection3d(
+    #    Line3DCollection(verts, colors='k', linewidths=0.2, linestyle=':')
+    #)
     #for k in range(vecs.shape[1]):
     #    ax.text(1.1*vecs[0,k], 1.1*vecs[1,k], 1.1*vecs[2,k], str(k))
 
