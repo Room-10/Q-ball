@@ -11,6 +11,7 @@ from dipy.core.ndindex import ndindex
 from dipy.direction.peaks import peak_directions
 from dipy.core.sphere import Sphere
 from dipy.reconst.shm import CsaOdfModel
+from dipy.data.fetcher import _make_fetcher, dipy_home
 
 try:
     import qball
@@ -264,9 +265,18 @@ def compute_err(peaks, groundtruth):
     print("AE, 75 perc", stats.scoreatpercentile(values,75))
     print("AE, max    ", np.max(values))
 
+fetch_isbi2013_challenge_gt = _make_fetcher(
+    "fetch_isbi2013_challenge_gt",
+    os.path.join(dipy_home, 'isbi2013_challenge'),
+    'http://hardi.epfl.ch/static/events/2013_ISBI/_downloads/',
+    ['ground-truth-peaks.nii.gz',],
+    ['ground-truth-peaks.nii.gz',],
+    ['fc3ecd9636d6130b0f0488812b3a341c',])
+
 if __name__ == "__main__":
-    groundtruth = sys.argv[1]
-    basedirs = sys.argv[2:]
+    files, folder = fetch_isbi2013_challenge_gt()
+    groundtruth = os.path.join(folder, 'ground-truth-peaks.nii.gz')
+    basedirs = sys.argv[1:]
 
     for i,output_dir in enumerate(basedirs):
         print("==> %s" % output_dir)
