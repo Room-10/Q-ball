@@ -58,6 +58,10 @@ After that, specify the experiment and model you want to test:
 
     python demo.py cross sh_l_tvw
 
+More options are documented when using
+
+    python demo.py cross sh_l_tvw --help
+
 All logs, plots, parameters, results etc. are automatically stored in subdirectories
 of the `results` directory.
 
@@ -65,4 +69,4 @@ Outlook
 -------
 
 * The confidence-interval-based fidelity still has to be implemented.
-* Evaluate results wrt. quality of fiber tractography.
+* Evaluate results wrt. quality of fiber tractography (feasible?)
