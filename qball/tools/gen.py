@@ -34,6 +34,9 @@ import dipy.reconst.dti as dti
 from dipy.reconst.dti import fractional_anisotropy
 
 def csd_response(gtab, data):
+    """ Estimate response function for given HARDI data.
+    Unfortunately, does not work for 2d (synthetic) data (why?).
+    """
     tenmodel = dti.TensorModel(gtab)
     tenfit = tenmodel.fit(data, mask=data[..., 0] > 200)
     FA = fractional_anisotropy(tenfit.evals)
