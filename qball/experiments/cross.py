@@ -73,7 +73,7 @@ class MyExperiment(QBallExperiment):
     def __init__(self, args):
         QBallExperiment.__init__(self, args)
         self.params['plot'].update({
-            'scale': 1.0,
+            'scale': 0.5,
             'norm': False,
             'slice': (slice(None),slice(None),None),
         })

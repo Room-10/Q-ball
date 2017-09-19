@@ -19,10 +19,13 @@ except:
 from qball.sphere import load_sphere
 from qball.tools import normalize_odf
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 def plot_peaks(fname, peaks):
     imagedims = peaks.shape[:-1]
 
-    import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(7,7))
     subplot_opts = {
         'aspect': 'equal',

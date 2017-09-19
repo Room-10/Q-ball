@@ -46,6 +46,7 @@ class MyExperiment(QBallExperiment):
         QBallExperiment.__init__(self, args)
         self.params['base']['assume_normed'] = False
         self.params['plot'].update({
+            'scale': 1.8,
             'slice': (slice(None),slice(None),None),
         })
 

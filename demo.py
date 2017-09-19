@@ -1,6 +1,8 @@
 
 import sys, pkgutil, importlib
 import logging
+import matplotlib
+matplotlib.use("Agg")
 
 # Import util for propper logging format.
 import qball.util
