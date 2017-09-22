@@ -110,6 +110,21 @@ def synth_unimodals(bval=3000, imagedims=(8,), jiggle=10, snr=None):
 
     return S_data_orig, S_data, gtab
 
+def synth_unimodals_linear(bval=3000, imagedims=(12,)):
+    d_image = len(imagedims)
+    n_image = np.prod(imagedims)
+
+    sph = load_sphere(refinement=2)
+    l_labels = sph.mdims['l_labels']
+    gtab = GradientTable(bval * sph.v.T, b0_threshold=0)
+
+    S_data_orig = np.stack([
+        one_fiber_signal(gtab, r, snr=None, eval_factor=15)
+        for r in np.linspace(-45, 45, n_image)
+    ]).reshape(imagedims + (l_labels,))
+
+    return S_data_orig, S_data_orig.copy(), gtab
+
 def synth_bimodals(bval=3000, const_width=5, snr=None):
     imagedims = (const_width*2,)
     d_image = len(imagedims)
@@ -205,8 +220,9 @@ def uniform_signal(gtab, snr=None):
         S0=1., angles=[(90,0)], fractions=[100], snr=snr)
     return signal
 
-def one_fiber_signal(gtab, angle, snr=None):
-    mevals = np.array([[1500e-6, 300e-6, 300e-6]])
+def one_fiber_signal(gtab, angle, snr=None, eval_factor=5):
+    eval_base = 300e-6
+    mevals = np.array([[eval_factor*eval_base, eval_base, eval_base]])
     signal, sticks = multi_tensor(gtab, mevals,
         S0=1., angles=[(90,angle)], fractions=[100], snr=snr)
     return signal
