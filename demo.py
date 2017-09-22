@@ -33,3 +33,4 @@ if __name__ == "__main__":
     exp = exp_module.MyExperiment(sys.argv[2:])
     exp.run()
     exp.plot()
+    #exp.plot_dti()
