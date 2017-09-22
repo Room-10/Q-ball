@@ -2,7 +2,7 @@
 import numpy as np
 from dipy.segment.mask import median_otsu
 
-def compute_bounds(b_sph, data, c=0.4):
+def compute_bounds(b_sph, data, c=0.6):
     imagedims = data.shape[:-1]
     n_image = np.prod(imagedims)
     d_image = len(imagedims)
@@ -17,8 +17,13 @@ def compute_bounds(b_sph, data, c=0.4):
     loglog_data = np.log(-np.log(data_clipped))
     f[:] = loglog_data.reshape(-1, l_labels).T
 
-    three_d_data = data[(slice(None),)*d_image + (None,)*(3-d_image) + (slice(None),)]
-    maskdata, mask = median_otsu(three_d_data)
+#    three_d_data = data[(slice(None),)*d_image + (None,)*(3-d_image) + (slice(None),)]
+#    maskdata, mask = median_otsu(three_d_data,dilate=3)
+#    np.savetxt('mask_file.txt', mask, fmt='%i')
+    
+    mask = np.loadtxt('mask_file.txt', dtype=bool)
+    print('Brain mask')
+    print(mask.astype(int))
 
     n_samples = np.sum(np.logical_not(mask))
     print('n_samples = ', n_samples)
@@ -28,15 +33,10 @@ def compute_bounds(b_sph, data, c=0.4):
 
     assert(samples.shape == (n_samples,l_labels))
 
-#    print(samples[:,0])
-
     noise_l = np.percentile(samples, c/2, axis=0)
     noise_u = np.percentile(samples, 1.0-c/2, axis=0)
 
     print('Noise in (',noise_l[0],',',noise_u[0],')')
-
-#    print('Data')
-#    print(data[10,10,:])
 
     data_l = data - noise_u
     data_u = data - noise_l

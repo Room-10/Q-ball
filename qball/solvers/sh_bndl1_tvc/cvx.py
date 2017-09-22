@@ -19,7 +19,7 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
     l_labels = b_sph.mdims['l_labels']
     assert(data.shape[-1] == l_labels)
 
-    fl, fu = compute_bounds(b_sph, data, c=0.05)
+    fl, fu = compute_bounds(b_sph, data)
 
     Y = np.zeros(sampling_matrix.shape, order='C')
     Y[:] = sampling_matrix
