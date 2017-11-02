@@ -81,7 +81,7 @@ class MyExperiment(QBallExperiment):
     def setup_imagedata(self):
         logging.info("Data setup.")
         self.S_data_orig, self.S_data, \
-            self.gtab, self.phantom = gen.synth_cross(snr=20)
+            self.gtab, self.phantom = gen.synth_cross(snr=10)
 
     def plot(self):
         QBallExperiment.plot(self)
