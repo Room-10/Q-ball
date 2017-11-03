@@ -59,11 +59,11 @@ def compute_bounds(b_sph, data, c=0.6):
     logging.debug('Bounds: n_samples = %d, rice_sigma = %.5f', n_samples, rice_scale)
 
     # for SNR=10, values smaller than 0.08 cannot be explained by a confidence
-    # interval with parameter c=0.6, e.g. some values in data[11,0,5:15]:
+    # interval with parameter c=0.6:
     #
     #   chndtrinc(np.square(0.08/10.0), 2, 0.6/2) == 1e-100
     #
-    # therefore, data_u will be 0 for 5% of the (nonzero!) measurements
+    # therefore, data_u will vanish for 5% of the (nonzero!) measurements
     data_l = np.sqrt(chndtrinc(np.square(data/rice_scale), 2, 1.0 - c/2))*rice_scale
     data_u = np.sqrt(chndtrinc(np.square(data/rice_scale), 2, c/2))*rice_scale
 
