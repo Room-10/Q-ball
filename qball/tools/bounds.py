@@ -3,7 +3,10 @@ import logging
 import numpy as np
 from dipy.segment.mask import median_otsu
 
-def compute_bounds(b_sph, data, c=0.7):
+from scipy.stats import rice
+from scipy.special import chndtrinc
+
+def compute_bounds(b_sph, data, c=0.6):
     """ Compute fidelity bounds for HARDI signal `data`.
 
     Args:
@@ -25,6 +28,7 @@ def compute_bounds(b_sph, data, c=0.7):
 #    logging.info('Foreground mask')
 #    logging.info(mask.astype(int))
 
+    # the mask is rotated by 270 degree (due to default plot being rotated)
     mask = np.rot90(np.array([
         [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1],
         [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0],
@@ -46,17 +50,25 @@ def compute_bounds(b_sph, data, c=0.7):
     n_samples = np.sum(np.logical_not(mask))
 
     samples = data[np.logical_not(mask.reshape(imagedims))]
-    samples -= 0.406569659741
     assert(samples.shape == (n_samples,l_labels))
 
-    noise_l = np.percentile(samples, 100*c/2, axis=0)
-    noise_u = np.percentile(samples, 100*(1.0-c/2), axis=0)
+    # even though we know `rice_nu == 0.406569659741`, we cannot fix this in
+    # the parameter estimation provided by SciPy
+    rice_nu, _, rice_scale = rice.fit(samples[:], floc=0)
 
-    logging.debug('Bounds: n_samples = %d, noise in (%.5f, %.5f)', \
-        n_samples, noise_l.min(), noise_u.max())
+    logging.debug('Bounds: n_samples = %d, rice_sigma = %.5f', n_samples, rice_scale)
 
-    data_l_clipped = np.clip(data - noise_u, np.spacing(1), 1-np.spacing(1))
-    data_u_clipped = np.clip(data - noise_l, np.spacing(1), 1-np.spacing(1))
+    # for SNR=10, values smaller than 0.08 cannot be explained by a confidence
+    # interval with parameter c=0.6, e.g. some values in data[11,0,5:15]:
+    #
+    #   chndtrinc(np.square(0.08/10.0), 2, 0.6/2) == 1e-100
+    #
+    # therefore, data_u will be 0 for 5% of the (nonzero!) measurements
+    data_l = np.sqrt(chndtrinc(np.square(data/rice_scale), 2, 1.0 - c/2))*rice_scale
+    data_u = np.sqrt(chndtrinc(np.square(data/rice_scale), 2, c/2))*rice_scale
+
+    data_l_clipped = np.clip(data_l, np.spacing(1), 1-np.spacing(1))
+    data_u_clipped = np.clip(data_u, np.spacing(1), 1-np.spacing(1))
     assert((data_l_clipped <= data_u_clipped).all())
 
     fl = np.zeros((l_labels, n_image), order='C')
