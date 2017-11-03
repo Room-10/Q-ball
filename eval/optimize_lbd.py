@@ -64,6 +64,11 @@ class LambdaOptimizer(object):
             relgap = (lbd_r - lbd_l)/lbd
             next = "l"
             while relgap > 4e-2:
+                if np.abs((lbd_r - lbd) - (lbd - lbd_l)) < 1e-3:
+                    if self.dists[lbd_key(lbd_l)] < self.dists[lbd_key(lbd_r)]:
+                        next = "l"
+                    else:
+                        next = "r"
                 if next == "l":
                     lbd_new = (lbd_l + lbd)/2
                     self.dists[lbd_key(lbd_new)] = self.compute(lbd_new)
