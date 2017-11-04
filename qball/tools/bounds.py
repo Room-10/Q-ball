@@ -3,16 +3,16 @@ import logging
 import numpy as np
 from dipy.segment.mask import median_otsu
 
-from scipy.stats import rice
-from scipy.special import chndtrinc
+from scipy.stats import rice, chi2
+from scipy.optimize import brentq
 
-def compute_bounds(b_sph, data, c=0.6):
+def compute_bounds(b_sph, data, alpha=0.05):
     """ Compute fidelity bounds for HARDI signal `data`.
 
     Args:
         b_sph : Sphere object from b-vectors
         data : HARDI signal
-        c : (optional) anticipated fraction of statistical outliers
+        alpha : (optional) confidence level, defaults to 0.05
 
     Returns:
         fl, fu : lower and upper bound for averaged log(-log(data))
@@ -58,14 +58,42 @@ def compute_bounds(b_sph, data, c=0.6):
 
     logging.debug('Bounds: n_samples = %d, rice_sigma = %.5f', n_samples, rice_scale)
 
-    # for SNR=10, values smaller than 0.08 cannot be explained by a confidence
-    # interval with parameter c=0.6:
     #
-    #   chndtrinc(np.square(0.08/10.0), 2, 0.6/2) == 1e-100
+    # Compute confidence intervals using the likelihood ratio test (LRT)
     #
-    # therefore, data_u will vanish for 5% of the (nonzero!) measurements
-    data_l = np.sqrt(chndtrinc(np.square(data/rice_scale), 2, 1.0 - c/2))*rice_scale
-    data_u = np.sqrt(chndtrinc(np.square(data/rice_scale), 2, c/2))*rice_scale
+    # This is extremely slow (~7 min for ~35000 data points) since it solves
+    # two root-finding problems for each of the data points (without any
+    # vectorization etc.)
+    #
+    data_l = np.zeros(data.size)
+    data_u = np.zeros(data.size)
+    # For LRT, the 2*log of the likelihood ratio is assumed to be chi^2 distributed
+    thresh = chi2.ppf(1.0-alpha, 1)
+    for i,d in enumerate(data.ravel()):
+        # first, estimate nu using MLE
+        optimal_nu = rice.fit(d, floc=0, fscale=rice_scale)[0]*rice_scale
+
+        # helper function func is the (shifted) 2*log of the likelihood ratio
+        ll_func = lambda nu: np.log(rice.pdf(d,nu/rice_scale,scale=rice_scale))
+        optimal_ll = ll_func(optimal_nu)
+        func = lambda nu: thresh - 2*(optimal_ll - ll_func(nu))
+
+        # func has a (positive) maximum at optimal_nu
+        # we're intrested in the interval, where func is positive
+        # determine root left of optimal_nu:
+        if func(np.spacing(1)) < 0:
+            data_l[i] = brentq(func, np.spacing(1), optimal_nu)
+        else:
+            data_l[i] = np.spacing(1)
+
+        # determine root right of optimal_nu:
+        if func(1.0 - np.spacing(1)) < 0:
+            data_u[i] = brentq(func, optimal_nu, 1.0 - np.spacing(1))
+        else:
+            data_u[i] = 1.0 - np.spacing(1)
+
+    data_l = data_l.reshape(data.shape)
+    data_u = data_u.reshape(data.shape)
 
     data_l_clipped = np.clip(data_l, np.spacing(1), 1-np.spacing(1))
     data_u_clipped = np.clip(data_u, np.spacing(1), 1-np.spacing(1))
