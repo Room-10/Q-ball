@@ -5,6 +5,7 @@ from dipy.segment.mask import median_otsu
 
 from scipy.stats import rice, chi2
 from scipy.optimize import brentq
+from scipy.special import iv
 
 def compute_bounds(b_sph, data, alpha=0.05):
     """ Compute fidelity bounds for HARDI signal `data`.
@@ -54,6 +55,8 @@ def compute_bounds(b_sph, data, alpha=0.05):
 
     # even though we know `rice_nu == 0.406569659741`, we cannot fix this in
     # the parameter estimation provided by SciPy
+    
+    # YK: 0.406569659741 is the mean of the background, which is not the same as nu
     rice_nu, _, rice_scale = rice.fit(samples[:], floc=0)
 
     logging.debug('Bounds: n_samples = %d, rice_sigma = %.5f', n_samples, rice_scale)
@@ -77,7 +80,11 @@ def compute_bounds(b_sph, data, alpha=0.05):
         ll_func = lambda nu: np.log(rice.pdf(d,nu/rice_scale,scale=rice_scale))
         optimal_ll = ll_func(optimal_nu)
         func = lambda nu: thresh - 2*(optimal_ll - ll_func(nu))
-
+        
+        ll_func1 = lambda nu: iv(nu*d/rice_scale^2)*exp(-nu^2/2/rice_scale^2)
+        thresh1 = func1(optimal_nu)*exp(-thresh)
+        func = lambda nu: thresh1 - ll_func1(nu)
+        
         # func has a (positive) maximum at optimal_nu
         # we're intrested in the interval, where func is positive
         # determine root left of optimal_nu:
