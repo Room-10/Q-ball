@@ -82,7 +82,7 @@ def compute_bounds(b_sph, data, alpha=0.05):
         func = lambda nu: thresh - 2*(optimal_ll - ll_func(nu))
         
         ll_func1 = lambda nu: iv(nu*d/rice_scale^2)*exp(-nu^2/2/rice_scale^2)
-        thresh1 = func1(optimal_nu)*exp(-thresh)
+        thresh1 = func1(optimal_nu)*exp(-thresh/2)
         func = lambda nu: thresh1 - ll_func1(nu)
         
         # func has a (positive) maximum at optimal_nu
