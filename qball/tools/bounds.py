@@ -4,16 +4,81 @@ import numpy as np
 from dipy.segment.mask import median_otsu
 
 from scipy.stats import rice, chi2
-from scipy.optimize import brentq
-from scipy.special import iv
+from scipy.optimize import brentq, fminbound
+from scipy.special import i0
 
-def compute_bounds(b_sph, data, alpha=0.05):
+from functools import partial
+from multiprocessing import Pool
+
+def rice_paramci(d, sigma, alpha=None, thresh=None):
+    """ Estimate structural parameter of a Rice distribution
+
+    The estimation uses the likelihood ratio test (LRT) and assumes the scaling
+    parameter sigma to be known. It requires only a single sample d. One of
+    alpha (confidence level) or thresh are required.
+
+    Args:
+        d : sample value
+        sigma : (known) scaling parameter of Rice distribution
+        alpha : confidence level
+        thresh : LRT threshold derived from ppf of chi^2 distribution
+
+    Returns:
+        optimal_nu : MLE estimator of nu
+        nu1, nu2 : Confidence interval for the estimated nu
+    """
+    assert(alpha is not None or thresh is not None)
+    if thresh is None:
+        thresh = np.exp(-0.5*chi2.ppf(1.0-alpha, 1))
+    sigma_sq_i = 1.0/(sigma*sigma)
+    result = [0,0,0]
+
+    # the following helper function is derived from the (negative) Rice pdf
+    #   rice.pdf(x,n,s) = x/s**2 * exp(-(x**2 + n**2)/(2*s**2)) * I[0](x*n/s**2)
+    # skipping factors that don't depend on nu
+    func_pdf = lambda nu: -np.exp(-0.5*nu*nu*sigma_sq_i)*i0(nu*d*sigma_sq_i)
+
+    # estimate optimal_nu using MLE
+    #
+    # the built-in method for MLE is comparably slow:
+    #   optimal_nu = rice.fit(d, floc=0, fscale=rice_scale)[0]*rice_scale
+    #
+    # solve explicit minimization problem instead:
+    optimal_nu, _, ierr, _ = fminbound(func_pdf, 0.0, 1.0, full_output=True)
+    assert(ierr == 0)
+
+    # determine confidence intervals for optimal_nu using LRT
+    #
+    # helper function derived from the (shifted) Rice likelihood ratio
+    shift = func_pdf(optimal_nu)*thresh
+    func_lrt = lambda nu: shift - func_pdf(nu)
+
+    # func_lrt has a (positive) maximum at optimal_nu
+    # we're intrested in the interval, where func_lrt is positive
+    result[0] = optimal_nu
+
+    # determine root left of optimal_nu:
+    if func_lrt(np.spacing(1)) < 0:
+        result[1] = brentq(func_lrt, np.spacing(1), optimal_nu)
+    else:
+        result[1] = np.spacing(1)
+
+    # determine root right of optimal_nu:
+    if func_lrt(1.0 - np.spacing(1)) < 0:
+        result[2] = brentq(func_lrt, optimal_nu, 1.0 - np.spacing(1))
+    else:
+        result[2] = 1.0 - np.spacing(1)
+
+    return tuple(result)
+
+
+def compute_bounds(b_sph, data, alpha=0.85):
     """ Compute fidelity bounds for HARDI signal `data`.
 
     Args:
         b_sph : Sphere object from b-vectors
         data : HARDI signal
-        alpha : (optional) confidence level, defaults to 0.05
+        alpha : (optional) confidence level
 
     Returns:
         fl, fu : lower and upper bound for averaged log(-log(data))
@@ -53,51 +118,25 @@ def compute_bounds(b_sph, data, alpha=0.05):
     samples = data[np.logical_not(mask.reshape(imagedims))]
     assert(samples.shape == (n_samples,l_labels))
 
+    logging.debug('Computing confidence intervals with confidence level %.2f ...', alpha)
+
     # even though we know `rice_nu == 0.406569659741`, we cannot fix this in
     # the parameter estimation provided by SciPy
-    
-    # YK: 0.406569659741 is the mean of the background, which is not the same as nu
     rice_nu, _, rice_scale = rice.fit(samples[:], floc=0)
 
-    logging.debug('Bounds: n_samples = %d, rice_sigma = %.5f', n_samples, rice_scale)
+    logging.debug('Estimated sigma=%.5f from n=%d samples.', rice_scale, n_samples)
 
-    #
     # Compute confidence intervals using the likelihood ratio test (LRT)
-    #
-    # This is extremely slow (~7 min for ~35000 data points) since it solves
-    # two root-finding problems for each of the data points (without any
-    # vectorization etc.)
-    #
     data_l = np.zeros(data.size)
     data_u = np.zeros(data.size)
-    # For LRT, the 2*log of the likelihood ratio is assumed to be chi^2 distributed
-    thresh = chi2.ppf(1.0-alpha, 1)
-    for i,d in enumerate(data.ravel()):
-        # first, estimate nu using MLE
-        optimal_nu = rice.fit(d, floc=0, fscale=rice_scale)[0]*rice_scale
+    thresh = np.exp(-0.5*chi2.ppf(1.0-alpha, 1))
+    paramci_partial = partial(rice_paramci, sigma=rice_scale, thresh=thresh)
 
-        # helper function func is the (shifted) 2*log of the likelihood ratio
-        ll_func = lambda nu: np.log(rice.pdf(d,nu/rice_scale,scale=rice_scale))
-        optimal_ll = ll_func(optimal_nu)
-        func = lambda nu: thresh - 2*(optimal_ll - ll_func(nu))
-        
-        ll_func1 = lambda nu: iv(nu*d/rice_scale^2)*exp(-nu^2/2/rice_scale^2)
-        thresh1 = func1(optimal_nu)*exp(-thresh/2)
-        func = lambda nu: thresh1 - ll_func1(nu)
-        
-        # func has a (positive) maximum at optimal_nu
-        # we're intrested in the interval, where func is positive
-        # determine root left of optimal_nu:
-        if func(np.spacing(1)) < 0:
-            data_l[i] = brentq(func, np.spacing(1), optimal_nu)
-        else:
-            data_l[i] = np.spacing(1)
-
-        # determine root right of optimal_nu:
-        if func(1.0 - np.spacing(1)) < 0:
-            data_u[i] = brentq(func, optimal_nu, 1.0 - np.spacing(1))
-        else:
-            data_u[i] = 1.0 - np.spacing(1)
+    # parallelize using all available CPU cores
+    p = Pool(processes=None)
+    res = p.map(paramci_partial, data.ravel())
+    p.terminate()
+    _, data_l[:], data_u[:] = np.array(res).T
 
     data_l = data_l.reshape(data.shape)
     data_u = data_u.reshape(data.shape)
