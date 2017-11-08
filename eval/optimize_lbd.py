@@ -10,6 +10,8 @@ except:
     import set_qball_path
 from qball.tools import normalize_odf
 
+import logging
+
 def lbd_key(lbd):
     return "%.4f" % lbd
 
@@ -124,14 +126,14 @@ class LambdaOptimizer(object):
             d = dists_npz['noise_%s' % distname]
             self.fulldists[lbd_key(0.0)] = d
             d_sum = np.sum(d)
-            print("Noise: %.5f (min: %.5f, max: %.5f)" % (
+            logging.info("Noise: %.5f (min: %.5f, max: %.5f)" % (
                 d_sum, np.amin(d), np.amax(d)))
             self.dists[lbd_key(0.0)] = d_sum
 
         d = dists_npz[distname]
         self.fulldists[lbd_key(lbd)] = d
         d_sum = np.sum(d)
-        print("%s: %.5f (min: %.5f, max: %.5f)" % (
+        logging.info("%s: %.5f (min: %.5f, max: %.5f)" % (
             lbd_key(lbd), d_sum, np.amin(d), np.amax(d)))
         return d_sum
 
