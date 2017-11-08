@@ -11,15 +11,18 @@ from numpy.linalg import norm
 import logging
 
 def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix,
-                         lbd=1.0, constraint_u=None, inpaintloc=None, **kwargs):
+                         lbd=1.0, constraint_u=None, inpaintloc=None,
+                         conf_lvl=0.9, **kwargs):
     solver = MyPDHGModel(data, gtab, sampling_matrix, model_matrix,
-                         lbd=lbd, constraint_u=constraint_u, inpaintloc=inpaintloc)
+                         conf_lvl=conf_lvl, lbd=lbd, constraint_u=constraint_u,
+                         inpaintloc=inpaintloc)
     details = solver.solve(**kwargs)
     return solver.state, details
 
 class MyPDHGModel(PDHGModelHARDI):
     def __init__(self, data, gtab, sampling_matrix, model_matrix,
-                       constraint_u=None, inpaintloc=None, **kwargs):
+                       constraint_u=None, inpaintloc=None,
+                       conf_lvl=0.9, **kwargs):
         PDHGModelHARDI.__init__(self, data, gtab, **kwargs)
 
         c = self.constvars
@@ -31,7 +34,7 @@ class MyPDHGModel(PDHGModelHARDI):
         d_image = c['d_image']
         l_labels = c['l_labels']
 
-        c['fl'], c['fu'] = compute_bounds(e['b_sph'], data)
+        c['fl'], c['fu'] = compute_bounds(e['b_sph'], data, alpha=conf_lvl)
 
         c['Y'] = np.zeros(sampling_matrix.shape, order='C')
         c['Y'][:] = sampling_matrix

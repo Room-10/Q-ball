@@ -71,14 +71,13 @@ def rice_paramci(d, sigma, alpha=None, thresh=None):
 
     return tuple(result)
 
-
-def compute_bounds(b_sph, data, alpha=0.85):
+def compute_bounds(b_sph, data, alpha):
     """ Compute fidelity bounds for HARDI signal `data`.
 
     Args:
         b_sph : Sphere object from b-vectors
         data : HARDI signal
-        alpha : (optional) confidence level
+        alpha : confidence level
 
     Returns:
         fl, fu : lower and upper bound for averaged log(-log(data))
@@ -118,7 +117,7 @@ def compute_bounds(b_sph, data, alpha=0.85):
     samples = data[np.logical_not(mask.reshape(imagedims))]
     assert(samples.shape == (n_samples,l_labels))
 
-    logging.debug('Computing confidence intervals with confidence level %.2f ...', alpha)
+    logging.debug('Computing confidence intervals with confidence level %.3f ...', alpha)
 
     # even though we know `rice_nu == 0.406569659741`, we cannot fix this in
     # the parameter estimation provided by SciPy
