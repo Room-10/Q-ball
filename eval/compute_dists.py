@@ -12,6 +12,12 @@ except:
 from qball.sphere import load_sphere
 from qball.tools import normalize_odf
 
+def kl_dist(f1, f2, b_sph):
+    """Entropy or Kullback-Leibler divergence"""
+    f1_pos = np.fmax(np.spacing(1),f1)
+    f2_pos = np.fmax(np.spacing(1),f2)
+    return np.einsum('k,ki->i', b_sph.b, f1_pos*np.log(f1_pos/f2_pos))
+
 def l2_dist(f1, f2, b_sph):
     return np.sqrt(np.einsum('k,ki->i', b_sph.b, (f1 - f2)**2))
 
@@ -52,7 +58,12 @@ def compute_dists(output_dir, distfun,
                   precomputed=None, redist=False, verbose=True):
     dists_file = os.path.join(output_dir, 'dists.npz')
     result_file = os.path.join(output_dir, 'result_raw.pickle')
-    result = pickle.load(open(result_file, 'rb'))[0]
+
+    if not os.path.exists(result_file):
+        print("No results found, skipping...")
+        return
+    else:
+        result = pickle.load(open(result_file, 'rb'))[0]
 
     try:
         upd = result['u']
@@ -108,6 +119,9 @@ if __name__ == "__main__":
     if sys.argv[1] == "w1":
         from qball.tools.w1dist import w1_dist
         distfun = w1_dist
+        basedirs = sys.argv[2:]
+    elif sys.argv[1] == "kl": # Kullback-Leibler or entropy
+        distfun = kl_dist
         basedirs = sys.argv[2:]
 
     for i,output_dir in enumerate(basedirs):

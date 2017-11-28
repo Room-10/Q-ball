@@ -42,21 +42,26 @@ class LambdaOptimizer(object):
         # ----------------------------------------------------------------------
         #   init
         # ----------------------------------------------------------------------
-        lbd_l = lbd = lbd_r = 0
-        for i in np.arange(1, 20, dtype=np.float64):
-            self.dists[lbd_key(i)] = self.compute(i)
-            relgap = (self.dists[lbd_key(i-1)] - self.dists[lbd_key(i)])/self.dists[lbd_key(i)]
-            if relgap < 1e-3:
-                if i == 1.0:
-                    lbd_l = 0.0
-                    lbd = 0.5
-                    lbd_r = 1.0
-                    self.dists[lbd_key(lbd)] = self.compute(lbd)
-                else:
-                    lbd_l = i-2.0
-                    lbd = i-1.0
-                    lbd_r = i
+        lbd_l, lbd, lbd_r = 0., 0., 1.
+        relgap_l = -1.
+        while relgap_l < 0:
+            lbd_l = lbd
+            lbd = lbd_r
+            lbd_r += 1
+            self.dists[lbd_key(lbd)] = self.compute(lbd)
+            relgap_l = (self.dists[lbd_key(lbd_l)] - self.dists[lbd_key(lbd)]) \
+                     /self.dists[lbd_key(lbd)]
+
+        while True:
+            self.dists[lbd_key(lbd_r)] = self.compute(lbd_r)
+            relgap_r = (self.dists[lbd_key(lbd)] - self.dists[lbd_key(lbd_r)]) \
+                      /self.dists[lbd_key(lbd_r)]
+            if relgap_r < 0:
                 break
+            else:
+                lbd_l = lbd
+                lbd = lbd_r
+                lbd_r += 1
 
         if self.dists[lbd_key(lbd)] < self.dists[lbd_key(lbd_r)] \
            and self.dists[lbd_key(lbd)] < self.dists[lbd_key(lbd_l)]:
@@ -148,6 +153,7 @@ if __name__ == "__main__":
     parser.add_argument('--redist', action="store_true", default=False,
                         help="Recalculate distances.")
     parser.add_argument('--w1', action="store_true", default=False)
+    parser.add_argument('--kl', action="store_true", default=False)
     parser.add_argument('--cvx', action="store_true", default=False)
     parsed_args = parser.parse_args()
 
@@ -158,6 +164,10 @@ if __name__ == "__main__":
     if parsed_args.w1:
         from qball.tools.w1dist import w1_dist
         distfun = w1_dist
+    elif parsed_args.kl:
+        from compute_dists import kl_dist
+        distfun = kl_dist
+
     basedir = None if parsed_args.basedir == "" else parsed_args.basedir
     opt = LambdaOptimizer(exp.MyExperiment, parsed_args.model, basedir=basedir,
                           dist=distfun, resume=parsed_args.resume,
