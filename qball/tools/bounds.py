@@ -1,7 +1,11 @@
 
 import logging
 import numpy as np
-from dipy.segment.mask import median_otsu
+
+try:
+    from skimage.filters import threshold_otsu as otsu
+except:
+    from dipy.segment.threshold import otsu
 
 from scipy.stats import rice, chi2
 from scipy.optimize import brentq, fminbound
@@ -9,6 +13,8 @@ from scipy.special import i0
 
 from functools import partial
 from multiprocessing import Pool
+
+from qball.tools import matrix2brl
 
 def rice_paramci(d, sigma, alpha=None, thresh=None):
     """ Estimate structural parameter of a Rice distribution
@@ -46,6 +52,10 @@ def rice_paramci(d, sigma, alpha=None, thresh=None):
     # solve explicit minimization problem instead:
     optimal_nu, _, ierr, _ = fminbound(func_pdf, 0.0, 1.0, full_output=True)
     assert(ierr == 0)
+
+    # Force interval to shrink exactly to a point for alpha=1.0
+    if thresh == 1.0:
+        return (optimal_nu,)*3
 
     # determine confidence intervals for optimal_nu using LRT
     #
@@ -88,32 +98,34 @@ def compute_bounds(b_sph, data, alpha):
     l_labels = b_sph.mdims['l_labels']
     assert(data.shape[-1] == l_labels)
 
-#    three_d_data = data[(slice(None),)*d_image + (None,)*(3-d_image) + (slice(None),)]
-#    maskdata, mask = median_otsu(three_d_data,dilate=3)
-#    logging.info('Foreground mask')
-#    logging.info(mask.astype(int))
+    # automatically estimate foreground from histogram thresholding (Otsu)
+    mask = np.mean(data, axis=-1)
+    thresh = otsu(mask)
+    mask = (mask <= thresh)
 
-    # the mask is rotated by 270 degree (due to default plot being rotated)
-    mask = np.rot90(np.array([
-        [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1],
-        [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0],
-        [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0],
-        [ 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0],
-        [ 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-        [ 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
-        [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-        [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-        [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-        [ 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-        [ 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-        [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-        [ 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0],
-        [ 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
-        [ 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0],
-    ], dtype=bool), k=3)
+    if True:
+        # For now, stick to precomputed mask for testing
+        print(matrix2brl(mask.astype(int)))
+        # the mask is rotated by 270 degree (due to default plot being rotated)
+        mask = np.rot90(np.array([
+            [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1],
+            [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0],
+            [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0],
+            [ 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0],
+            [ 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [ 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+            [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+            [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+            [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+            [ 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+            [ 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+            [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+            [ 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0],
+            [ 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
+            [ 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0],
+        ], dtype=bool), k=3)
 
     n_samples = np.sum(np.logical_not(mask))
-
     samples = data[np.logical_not(mask.reshape(imagedims))]
     assert(samples.shape == (n_samples,l_labels))
 
