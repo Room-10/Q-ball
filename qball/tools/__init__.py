@@ -19,6 +19,21 @@ def normalize_odf(odf, vol):
     odf_sum = np.einsum('k,ki->i', vol, odf_flat)
     odf_flat[:] = np.einsum('i,ki->ki', 1.0/odf_sum, odf_flat)
 
+def matrix2brl(arr):
+    """Converts a binary matrix to unicode braille points"""
+    # counting order of braille points
+    brls = 2**np.array([[0,3],
+                        [1,4],
+                        [2,5],
+                        [6,7]])
+    brl, W, H = "", 2, 4
+    padded = np.pad(arr, ((0,H-arr.shape[0]%H),(0,W-arr.shape[1]%W)), 'constant')
+    for i in range(0, padded.shape[0], H):
+        for j in range(0, padded.shape[1], W):
+            brl += chr(10240+int(np.sum(padded[i:i+H,j:j+W]*brls)))
+        brl += "\n"
+    return brl.strip("\n")
+
 def plot_mesh3(ax, vecs, tris):
     """ Plots a surface according to a given triangulation.
 
