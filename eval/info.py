@@ -61,15 +61,10 @@ def print_bounds(output_dir):
 
     fl, fu = compute_bounds(b_sph, S_data, alpha=conf_lvl)
 
-    abs_max = np.fmax(np.abs(fl),np.abs(fu))
-    idx = (abs_max >= np.spacing(1))
-    rel_interval_sizes = 100*(fu-fl)[idx]/abs_max[idx]
-    print("Not-null-entries: %d out of %d" % (np.sum(idx), fu.size))
-    print("Min interval size (%% of max(|fu|,|fl|)): %.2f" % np.amin(rel_interval_sizes))
-    print("Max interval size (%% of max(|fu|,|fl|)): %.2f" % np.amax(rel_interval_sizes))
-    print("Average interval size (%% of max(|fu|,|fl|)): %.2f" % np.mean(rel_interval_sizes))
-    print("Intervals larger than max(|fu|,|fl|): %d out of %d" \
-        % (np.sum(rel_interval_sizes > 100), rel_interval_sizes.size))
+    interv_sizes = fu-fl
+    print("Range: %.2f ... %.2f" % (np.amin(fl),np.amax(fu)))
+    print("min/avg/max interval size: %.2f ... %.2f ... %.2f" % (
+        np.amin(interv_sizes), np.mean(interv_sizes), np.amax(interv_sizes)))
 
     idx = (fl < upd) & (upd < fu)
     print("Solution not in interval: %d out of %d" % (np.sum(idx), upd.size))
