@@ -11,6 +11,25 @@ from qball.tools.bounds import compute_bounds
 
 from compute_dists import reconst_f
 
+# Foreground mask for experiment `cross`
+cross_mask = np.rot90(np.array([
+    [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1],
+    [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0],
+    [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0],
+    [ 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0],
+    [ 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+    [ 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+    [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+    [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+    [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+    [ 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+    [ 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+    [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+    [ 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0],
+    [ 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
+    [ 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0],
+], dtype=bool), k=3)
+
 def print_params(output_dir):
     params_file = os.path.join(output_dir, 'params.pickle')
     if not os.path.exists(params_file):
@@ -59,15 +78,25 @@ def print_bounds(output_dir):
     except:
         conf_lvl = float(input("conf_lvl: "))
 
-    fl, fu = compute_bounds(b_sph, S_data, alpha=conf_lvl)
+    fl, fu = compute_bounds(b_sph, S_data, alpha=conf_lvl, mask=cross_mask)
 
     interv_sizes = fu-fl
     print("Range: %.2f ... %.2f" % (np.amin(fl),np.amax(fu)))
     print("min/avg/max interval size: %.2f ... %.2f ... %.2f" % (
         np.amin(interv_sizes), np.mean(interv_sizes), np.amax(interv_sizes)))
 
-    idx = (fl < upd) & (upd < fu)
-    print("Solution not in interval: %d out of %d" % (np.sum(idx), upd.size))
+    in_mod_interval = []
+    perc = 30
+    mod_count = int(120/perc)+1
+    for k in range(mod_count):
+        fl_mod = fl - k*(perc/100.)*interv_sizes
+        fu_mod = fu + k*(perc/100.)*interv_sizes
+        idx = (fl_mod < upd) & (upd < fu_mod)
+        in_mod_interval.append(np.sum(idx))
+    print("  Intervals enlarged by:",
+        " ".join(("% 5d%%" % (2*perc*i)) for i in range(mod_count)))
+    print("% in enlarged Intervals:",
+        " ".join(("% 5.1f%%" % (100*i/upd.size)) for i in in_mod_interval))
 
 def entropy(u, vol):
     u_pos = np.fmax(np.spacing(1),u)
@@ -86,25 +115,7 @@ def print_entropy(output_dir):
     f_gt, f_noisy = reconst_f(output_dir, b_sph)
     upd = result['u1'].reshape(f_gt.shape[0],-1)
 
-    # Check foreground pixels:
-    mask = np.rot90(np.array([
-        [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1],
-        [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0],
-        [ 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0],
-        [ 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0],
-        [ 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-        [ 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
-        [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-        [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-        [ 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-        [ 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-        [ 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-        [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-        [ 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0],
-        [ 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
-        [ 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0],
-    ], dtype=bool), k=3).reshape(upd.shape[1:])
-
+    mask = crossmask.reshape(upd.shape[1:])
     f_gt_fg = f_gt[:,mask]
     f_noisy_fg = f_noisy[:,mask]
     upd_fg = upd[:,mask]

@@ -81,7 +81,7 @@ def rice_paramci(d, sigma, alpha=None, thresh=None):
 
     return tuple(result)
 
-def compute_bounds(b_sph, data, alpha):
+def compute_bounds(b_sph, data, alpha, mask=None):
     """ Compute fidelity bounds for HARDI signal `data`.
 
     Args:
@@ -98,11 +98,12 @@ def compute_bounds(b_sph, data, alpha):
     l_labels = b_sph.mdims['l_labels']
     assert(data.shape[-1] == l_labels)
 
-    # automatically estimate foreground from histogram thresholding (Otsu)
-    mask = np.mean(data, axis=-1)
-    thresh = otsu(mask)
-    mask = (mask <= thresh)
-    print(matrix2brl(mask.astype(int)))
+    if mask is None:
+        # automatically estimate foreground from histogram thresholding (Otsu)
+        mask = np.mean(data, axis=-1)
+        thresh = otsu(mask)
+        mask = (mask <= thresh)
+        print(matrix2brl(mask.astype(int)))
 
     n_samples = np.sum(np.logical_not(mask))
     samples = data[np.logical_not(mask.reshape(imagedims))]
