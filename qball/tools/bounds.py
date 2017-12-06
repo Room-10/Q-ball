@@ -8,7 +8,7 @@ except:
     from dipy.segment.threshold import otsu
 
 from scipy.stats import rice, chi2
-from scipy.optimize import brentq, fminbound
+from scipy.optimize import brentq, minimize_scalar
 from scipy.special import i0
 
 from functools import partial
@@ -42,7 +42,8 @@ def rice_paramci(d, sigma, alpha=None, thresh=None):
     # the following helper function is derived from the (negative) Rice pdf
     #   rice.pdf(x,n,s) = x/s**2 * exp(-(x**2 + n**2)/(2*s**2)) * I[0](x*n/s**2)
     # skipping factors that don't depend on nu
-    func_pdf = lambda nu: -np.exp(-0.5*nu*nu*sigma_sq_i)*i0(nu*d*sigma_sq_i)
+    func_pdf = lambda nu: -np.exp(-0.5*nu*nu*sigma_sq_i)*i0(nu*d*sigma_sq_i) \
+        if nu >= 1e-15 and nu <= 1 else np.finfo(np.float64).max
 
     # estimate optimal_nu using MLE
     #
@@ -50,12 +51,11 @@ def rice_paramci(d, sigma, alpha=None, thresh=None):
     #   optimal_nu = rice.fit(d, floc=0, fscale=rice_scale)[0]*rice_scale
     #
     # solve explicit minimization problem instead:
-    optimal_nu, _, ierr, _ = fminbound(func_pdf, 0.0, 1.0, full_output=True)
-    assert(ierr == 0)
-
-    # Force interval to shrink exactly to a point for alpha=1.0
-    if thresh == 1.0:
-        return (optimal_nu,)*3
+    opt_res = minimize_scalar(func_pdf, bracket=(0.0,1.0),
+        method='brent', options={ 'xtol': np.spacing(1) })
+    assert(opt_res.success)
+    optimal_nu = opt_res.x
+    assert(optimal_nu >= 0.0 and optimal_nu <= 1.0)
 
     # determine confidence intervals for optimal_nu using LRT
     #
@@ -127,10 +127,7 @@ def compute_bounds(b_sph, data, alpha, mask=None):
     p = Pool(processes=None)
     res = p.map(paramci_partial, data.ravel())
     p.terminate()
-    _, data_l[:], data_u[:] = np.array(res).T
-
-    data_l = data_l.reshape(data.shape)
-    data_u = data_u.reshape(data.shape)
+    data_nu, data_l[:], data_u[:] = np.array(res).T
 
     data_l_clipped = np.clip(data_l, np.spacing(1), 1-np.spacing(1))
     data_u_clipped = np.clip(data_u, np.spacing(1), 1-np.spacing(1))
