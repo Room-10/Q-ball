@@ -1,146 +1,73 @@
 
-import sys, os, pickle, shutil
+import os, shutil
 import numpy as np
 
-from compute_dists import l2_dist, load_b_sph, reconst_f, compute_dists
-
-try:
-    import qball
-except:
-    import set_qball_path
-from qball.tools import normalize_odf
+from compute_dists import l2_dist, compute_dists
+from optimize_param import ParamOptimizer
 
 import logging
 
-def lbd_key(lbd):
-    return "%.4f" % lbd
-
-class LambdaOptimizer(object):
-    def __init__(self, experiment, model, basedir=None, dist=l2_dist,
-                 resume=False, redist=False, cvx=False, params=""):
-        self.experiment = experiment
-        self.model = model
-        if basedir is not None:
-            self.basedir = basedir.rstrip("/")
-        else:
-            exp_args = [self.model, '--plot','no']
-            exp = self.experiment(exp_args)
-            exp.load_imagedata()
-            self.basedir = exp.output_dir
-        self.dist = dist
-        self.resume = resume
-        self.redist = redist
-        self.cvx = cvx
-        self.params = params
-
-        self.result = None
-        self.dists = {}
-        self.fulldists = {}
-        self.b_sph = load_b_sph(self.basedir)
+class LambdaOptimizer(ParamOptimizer):
+    par_step = 1.0
+    par_min = 0.0
+    par_key = lambda self,par: "%.4f" % par
+    par_name = "lbd"
+    tol = 4e-2
 
     def run(self):
-        # ----------------------------------------------------------------------
-        #   init
-        # ----------------------------------------------------------------------
-        lbd_l, lbd, lbd_r = 0., 0., 1.
-        relgap_l = -1.
-        while relgap_l < 0:
-            lbd_l = lbd
-            lbd = lbd_r
-            lbd_r += 1
-            self.dists[lbd_key(lbd)] = self.compute(lbd)
-            relgap_l = (self.dists[lbd_key(lbd_l)] - self.dists[lbd_key(lbd)]) \
-                     /self.dists[lbd_key(lbd)]
-
-        while True:
-            self.dists[lbd_key(lbd_r)] = self.compute(lbd_r)
-            relgap_r = (self.dists[lbd_key(lbd)] - self.dists[lbd_key(lbd_r)]) \
-                      /self.dists[lbd_key(lbd_r)]
-            if relgap_r < 0:
-                break
-            else:
-                lbd_l = lbd
-                lbd = lbd_r
-                lbd_r += 1
-
-        if self.dists[lbd_key(lbd)] < self.dists[lbd_key(lbd_r)] \
-           and self.dists[lbd_key(lbd)] < self.dists[lbd_key(lbd_l)]:
-            # ------------------------------------------------------------------
-            #   bisect
-            # ------------------------------------------------------------------
-            relgap = (lbd_r - lbd_l)/lbd
-            next = "l"
-            while relgap > 4e-2:
-                if np.abs((lbd_r - lbd) - (lbd - lbd_l)) < 1e-3:
-                    if self.dists[lbd_key(lbd_l)] < self.dists[lbd_key(lbd_r)]:
-                        next = "l"
-                    else:
-                        next = "r"
-                if next == "l":
-                    lbd_new = (lbd_l + lbd)/2
-                    self.dists[lbd_key(lbd_new)] = self.compute(lbd_new)
-                    if self.dists[lbd_key(lbd_new)] < self.dists[lbd_key(lbd)]:
-                        lbd_l, lbd, lbd_r = lbd_l, lbd_new, lbd
-                    else:
-                        lbd_l = lbd_new
-                    next = "r"
-                else:
-                    lbd_new = (lbd + lbd_r)/2
-                    self.dists[lbd_key(lbd_new)] = self.compute(lbd_new)
-                    if self.dists[lbd_key(lbd_new)] < self.dists[lbd_key(lbd)]:
-                        lbd_l, lbd, lbd_r = lbd, lbd_new, lbd_r
-                    else:
-                        lbd_r = lbd_new
-                    next = "l"
-                relgap = (lbd_r - lbd_l)/lbd
-        else:
-            lbd = lbd_r
-        self.result = lbd
+        if self.result is None:
+            self.compute(self.par_step)
+        ParamOptimizer.run(self)
 
     def compute(self, lbd):
-        output_dir = self.basedir
-        if self.basedir[-len(self.model):] != self.model:
-            output_dir = "%s-%s" % (output_dir, self.model)
-        output_dir = "%s-%s" % (output_dir, lbd_key(lbd))
+        output_dir = self.dirname(self.par_key(lbd))
+        run_exp = self.resume
 
         if not os.path.exists(output_dir):
             shutil.copytree(self.basedir, output_dir,
                             ignore=shutil.ignore_patterns("*.log","*.zip"))
+            run_exp = True
 
-        exp_params = 'lbd=%f' % lbd
-        if len(self.params) > 0:
-            exp_params = '%s,%s' % (exp_params, self.params)
-        exp_args = [self.model, '--output', output_dir, '--plot','no']
-        exp_args += ['--params', exp_params]
-        if self.resume:
-            exp_args.append('--resume')
-        if self.cvx:
-            exp_args.append('--cvx')
-        exp = self.experiment(exp_args)
-        exp.run()
+        if run_exp:
+            exp_params = 'lbd=%f' % lbd
+            if len(self.params) > 0:
+                exp_params = '%s,%s' % (exp_params, self.params)
+            exp_args = [self.model, '--output', output_dir, '--plot','no']
+            exp_args += ['--params', exp_params]
+            if self.resume:
+                exp_args.append('--resume')
+            if self.cvx:
+                exp_args.append('--cvx')
+            exp = self.experiment(exp_args)
+            exp.run()
 
         distname = self.dist.__name__
         dists_npz = {}
-        if lbd_key(0.0) in self.fulldists:
-            dists_npz['noise_%s' % distname] = self.fulldists[lbd_key(0.0)]
+        if self.par_key(0.0) in self.fulldists:
+            dists_npz['noise_%s' % distname] = self.fulldists[self.par_key(0.0)]
 
         dists_npz = compute_dists(output_dir, self.dist, verbose=False,
                                   precomputed=dists_npz, redist=self.redist)
 
-        if lbd_key(0.0) not in self.fulldists:
+        if dists_npz is None:
+            # something went wrong, recompute
+            shutil.rmtree(output_dir)
+            self.compute(lbd)
+
+        if self.par_key(0.0) not in self.fulldists:
             d = dists_npz['noise_%s' % distname]
-            self.fulldists[lbd_key(0.0)] = d
+            self.fulldists[self.par_key(0.0)] = d
             d_sum = np.sum(d)
-            logging.info("Noise: %.5f (min: %.5f, max: %.5f)" % (
-                d_sum, np.amin(d), np.amax(d)))
-            self.dists[lbd_key(0.0)] = d_sum
+            logging.info("Noise: %.5f (min: %.5f, max: %.5f)" % \
+                (d_sum, np.amin(d), np.amax(d)))
+            self.dists[self.par_key(0.0)] = d_sum
 
         d = dists_npz[distname]
-        self.fulldists[lbd_key(lbd)] = d
+        self.fulldists[self.par_key(lbd)] = d
         d_sum = np.sum(d)
-        logging.info("%s: %.5f (min: %.5f, max: %.5f)" % (
-            lbd_key(lbd), d_sum, np.amin(d), np.amax(d)))
-        return d_sum
+        logging.info("%s=%s: %.5f (min: %.5f, max: %.5f)" % \
+            (self.par_name, self.par_key(lbd), d_sum, np.amin(d), np.amax(d)))
+        self.dists[self.par_key(lbd)] = d_sum
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
@@ -152,8 +79,7 @@ if __name__ == "__main__":
     parser.add_argument('--resume', action="store_true", default=False)
     parser.add_argument('--redist', action="store_true", default=False,
                         help="Recalculate distances.")
-    parser.add_argument('--w1', action="store_true", default=False)
-    parser.add_argument('--kl', action="store_true", default=False)
+    parser.add_argument('--dist', metavar='DIST', type=str, default="l2")
     parser.add_argument('--cvx', action="store_true", default=False)
     parsed_args = parser.parse_args()
 
@@ -161,17 +87,20 @@ if __name__ == "__main__":
     exp = importlib.import_module("qball.experiments.%s" % parsed_args.experiment)
 
     distfun = l2_dist
-    if parsed_args.w1:
+    if parsed_args.dist == "w1":
         from qball.tools.w1dist import w1_dist
         distfun = w1_dist
-    elif parsed_args.kl:
+    elif parsed_args.dist == "kl":
         from compute_dists import kl_dist
         distfun = kl_dist
 
     basedir = None if parsed_args.basedir == "" else parsed_args.basedir
+    print("==> Optimizing lambda for dist '%s' and basedir '%s'..." % \
+          (parsed_args.dist, basedir))
     opt = LambdaOptimizer(exp.MyExperiment, parsed_args.model, basedir=basedir,
                           dist=distfun, resume=parsed_args.resume,
                           redist=parsed_args.redist, cvx=parsed_args.cvx,
                           params=parsed_args.params)
     opt.run()
-    print(opt.result)
+    print("==> Optimal lambda for dist '%s' and basedir '%s': %.4f" % \
+          (parsed_args.dist, basedir, opt.result))
