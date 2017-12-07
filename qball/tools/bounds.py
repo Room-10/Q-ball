@@ -42,8 +42,7 @@ def rice_paramci(d, sigma, alpha=None, thresh=None):
     # the following helper function is derived from the (negative) Rice pdf
     #   rice.pdf(x,n,s) = x/s**2 * exp(-(x**2 + n**2)/(2*s**2)) * I[0](x*n/s**2)
     # skipping factors that don't depend on nu
-    func_pdf = lambda nu: -np.exp(-0.5*nu*nu*sigma_sq_i)*i0(nu*d*sigma_sq_i) \
-        if nu >= 1e-15 and nu <= 1 else np.finfo(np.float64).max
+    func_pdf = lambda nu: -np.exp(-0.5*nu*nu*sigma_sq_i)*i0(nu*d*sigma_sq_i)
 
     # estimate optimal_nu using MLE
     #
@@ -51,8 +50,8 @@ def rice_paramci(d, sigma, alpha=None, thresh=None):
     #   optimal_nu = rice.fit(d, floc=0, fscale=rice_scale)[0]*rice_scale
     #
     # solve explicit minimization problem instead:
-    opt_res = minimize_scalar(func_pdf, bracket=(0.0,1.0),
-        method='brent', options={ 'xtol': np.spacing(1) })
+    opt_res = minimize_scalar(func_pdf, bounds=(0.0,1.0),
+        method='bounded', options={ 'xatol': np.sqrt(np.spacing(1)) })
     assert(opt_res.success)
     optimal_nu = opt_res.x
     assert(optimal_nu >= 0.0 and optimal_nu <= 1.0)
@@ -80,6 +79,17 @@ def rice_paramci(d, sigma, alpha=None, thresh=None):
         result[2] = 1.0 - np.spacing(1)
 
     return tuple(result)
+
+def clip_data(data, delta=1e-5):
+    """ Apply thresholding from Aganj 2010, equation 19. """
+    I1 = (data < 0)
+    I2 = (0 <= data) & (data < delta)
+    I4 = (1-delta <= data) & (data < 1)
+    I5 = (1.0 < data)
+    data[I1] = delta/2
+    data[I2] = delta/2 + data[I2]**2/(2*delta)
+    data[I4] = 1 - delta/2 - (1 - data[I4])**2/(2*delta)
+    data[I5] = 1 - delta/2
 
 def compute_bounds(b_sph, data, alpha, mask=None):
     """ Compute fidelity bounds for HARDI signal `data`.
@@ -129,15 +139,15 @@ def compute_bounds(b_sph, data, alpha, mask=None):
     p.terminate()
     data_nu, data_l[:], data_u[:] = np.array(res).T
 
-    data_l_clipped = np.clip(data_l, np.spacing(1), 1-np.spacing(1))
-    data_u_clipped = np.clip(data_u, np.spacing(1), 1-np.spacing(1))
-    assert((data_l_clipped <= data_u_clipped).all())
+    clip_data(data_l)
+    clip_data(data_u)
+    assert((data_l <= data_u).all())
 
     fl = np.zeros((l_labels, n_image), order='C')
     fu = np.zeros((l_labels, n_image), order='C')
 
-    fl[:] = np.log(-np.log(data_u_clipped)).reshape(-1, l_labels).T
-    fu[:] = np.log(-np.log(data_l_clipped)).reshape(-1, l_labels).T
+    fl[:] = np.log(-np.log(data_u)).reshape(-1, l_labels).T
+    fu[:] = np.log(-np.log(data_l)).reshape(-1, l_labels).T
     assert((fl <= fu).all())
 
     fl_mean = np.einsum('ki,k->i', fl, b_sph.b)/(4*np.pi)
