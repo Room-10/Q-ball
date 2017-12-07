@@ -55,7 +55,7 @@ class Experiment(object):
         output_dir_create(self.output_dir)
         add_log_file(logging.getLogger(), self.output_dir)
         backup_source(self.output_dir)
-        logging.info("Args: %s" % args)
+        logging.debug("Args: %s" % args)
 
         self.init_params()
         self.restore_from_output_dir()

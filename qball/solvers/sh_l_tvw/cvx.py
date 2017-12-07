@@ -137,5 +137,5 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
             for t in range(d_image):
                 x['w'][i,j,:,t] = w_constr[(j*n_image + i)*d_image + t].dual_value.ravel()
 
-    logging.debug("{}: objd = {: 9.6g}".format(prob.status, prob.value))
+    logging.info("{}: objd = {: 9.6g}".format(prob.status, prob.value))
     return (x,y), { 'objp': prob.value, 'status': prob.status }

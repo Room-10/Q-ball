@@ -265,7 +265,7 @@ class PDHGModel(object):
 
                 if interrupt_hdl.interrupted or _iter % granularity == 0:
                     if interrupt_hdl.interrupted:
-                        logging.debug("Interrupt (SIGINT) at iter=%d" % _iter)
+                        logging.info("Interrupt (SIGINT) at iter=%d" % _iter)
 
                     if use_gpu:
                         for n in ['xk','xgradk','yk','ygradk']:
@@ -276,7 +276,7 @@ class PDHGModel(object):
                     # compute relative primal-dual gap
                     relgap = (obj_p - obj_d) / max(np.spacing(1), obj_d)
 
-                    logging.debug("#{:6d}: objp = {: 9.6g} ({: 9.6g}), " \
+                    logging.info("#{:6d}: objp = {: 9.6g} ({: 9.6g}), " \
                         "objd = {: 9.6g} ({: 9.6g}), " \
                         "gap = {: 9.6g}, " \
                         "relgap = {: 9.6g} ".format(

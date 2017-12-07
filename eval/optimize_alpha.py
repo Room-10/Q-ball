@@ -96,3 +96,4 @@ if __name__ == "__main__":
     opt.run()
     logging.info("==> Optimal alpha for dist '%s' and basedir '%s': %.4f" % \
           (parsed_args.dist, basedir, 1-opt.result))
+    logging.info("")

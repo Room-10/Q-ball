@@ -13,7 +13,7 @@ class MyFormatter(logging.Formatter):
         record.relStrCreated = "% 2d:%02d:%06.3f" % (int(th),int(tm),ts)
         return super(MyFormatter, self).format(record)
 ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.DEBUG)
+ch.setLevel(logging.INFO)
 ch.setFormatter(MyFormatter('[%(relStrCreated)s] %(message)s'))
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)

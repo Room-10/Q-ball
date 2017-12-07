@@ -58,13 +58,13 @@ def prepare_kernels(files, templates, itervars, constvars, blockvars):
     griddims = (attrs[devattr.MAX_GRID_DIM_X],
                 attrs[devattr.MAX_GRID_DIM_Y],
                 attrs[devattr.MAX_GRID_DIM_Z])
-    logging.info("CUDA kernels prepared for GPU (MAX_BLOCK_DIM={blockdims}, " \
+    logging.info("CUDA kernels prepared for GPU")
+    logging.debug("MAX_BLOCK_DIM={blockdims}, " \
         "MAX_GRID_DIM={griddims}, MAX_THREADS_PER_BLOCK={maxthreads}, " \
         "TOTAL_CONSTANT_MEMORY={const_mem}, " \
         "MAX_SHARED_MEMORY_PER_BLOCK={shared_mem}, " \
         "MAX_REGISTERS_PER_BLOCK={registers}, " \
-        "KERNEL_EXEC_TIMEOUT={kernel_timeout}" \
-        ")".format(
+        "KERNEL_EXEC_TIMEOUT={kernel_timeout}".format(
         blockdims="x".join(map(str,blockdims)),
         griddims="x".join(map(str,griddims)),
         maxthreads=attrs[devattr.MAX_THREADS_PER_BLOCK],

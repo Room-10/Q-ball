@@ -142,5 +142,5 @@ def qball_regularization(f, gtab, sampling_matrix, lbd=1.0):
         for i in range(n_image):
             x['w0'][i,j,:] = w0_constr[j*n_image + i].dual_value.ravel()
 
-    logging.debug("{}: objd = {: 9.6g}".format(prob.status, prob.value))
+    logging.info("{}: objd = {: 9.6g}".format(prob.status, prob.value))
     return (x,y), { 'objp': prob.value, 'status': prob.status }

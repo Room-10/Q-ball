@@ -95,12 +95,13 @@ if __name__ == "__main__":
         distfun = kl_dist
 
     basedir = None if parsed_args.basedir == "" else parsed_args.basedir
-    print("==> Optimizing lambda for dist '%s' and basedir '%s'..." % \
+    logging.info("==> Optimizing lambda for dist '%s' and basedir '%s'..." % \
           (parsed_args.dist, basedir))
     opt = LambdaOptimizer(exp.MyExperiment, parsed_args.model, basedir=basedir,
                           dist=distfun, resume=parsed_args.resume,
                           redist=parsed_args.redist, cvx=parsed_args.cvx,
                           params=parsed_args.params)
     opt.run()
-    print("==> Optimal lambda for dist '%s' and basedir '%s': %.4f" % \
+    logging.info("==> Optimal lambda for dist '%s' and basedir '%s': %.4f" % \
           (parsed_args.dist, basedir, opt.result))
+    logging.info("")

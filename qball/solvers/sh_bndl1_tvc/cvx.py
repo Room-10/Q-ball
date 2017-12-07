@@ -119,5 +119,5 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
     np.einsum('km,mi->ki', sampling_matrix,
         np.einsum('m,mi->mi', model_matrix, x['v']), out=x['u2'])
 
-    logging.debug("{}: objd = {: 9.6g}".format(prob.status, prob.value))
+    logging.info("{}: objd = {: 9.6g}".format(prob.status, prob.value))
     return (x,y), { 'objp': prob.value, 'status': prob.status }

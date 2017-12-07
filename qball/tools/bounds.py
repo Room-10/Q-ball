@@ -113,19 +113,19 @@ def compute_bounds(b_sph, data, alpha, mask=None):
         mask = np.mean(data, axis=-1)
         thresh = otsu(mask)
         mask = (mask <= thresh)
-        print(matrix2brl(mask.astype(int)))
+        logging.debug("\n%s" % matrix2brl(mask.astype(int)))
 
     n_samples = np.sum(np.logical_not(mask))
     samples = data[np.logical_not(mask.reshape(imagedims))]
     assert(samples.shape == (n_samples,l_labels))
 
-    logging.debug('Computing confidence intervals with confidence level %.3f ...', alpha)
+    logging.info('Computing confidence intervals with confidence level %.3f ...', alpha)
 
     # even though we know `rice_nu == 0.406569659741`, we cannot fix this in
     # the parameter estimation provided by SciPy
     rice_nu, _, rice_scale = rice.fit(samples[:], floc=0)
 
-    logging.debug('Estimated sigma=%.5f from n=%d samples.', rice_scale, n_samples)
+    logging.info('Estimated sigma=%.5f from n=%d samples.', rice_scale, n_samples)
 
     # Compute confidence intervals using the likelihood ratio test (LRT)
     data_l = np.zeros(data.size)
