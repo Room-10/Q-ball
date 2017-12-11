@@ -24,6 +24,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from compute_dists import reconst_f
+
+def peak_dist(_, u, b_sph):
+    sphere = Sphere(xyz=b_sph.v.T)
+    peaks = compute_peaks(u, sphere, relative_peak_threshold=.5,
+                  peak_normalize=1, min_separation_angle=25, max_peak_number=5)
+    _, _, _, AE = compute_err(peaks, load_gt_img())
+    return AE
+
 def plot_peaks(fname, peaks):
     imagedims = peaks.shape[:-1]
 
@@ -46,10 +55,10 @@ def plot_peaks(fname, peaks):
         for y in range(0,imagedims[1]):
             mid = delta*(np.array([x,y]) + 0.5)
             ax.scatter(mid[0], mid[1], s=3, c='b', linewidths=0)
-            for d in range(5) :
+            for d in range(5):
                 peak = peaks[x,y,range(d*3, d*3+3)]
                 f = norm(peak)
-                if f > 0 :
+                if f > 0:
                     peak /= f
                     data = np.array([
                         mid[:] - 0.5*peak_scaling*peak[[0,2]],
@@ -62,34 +71,41 @@ def plot_peaks(fname, peaks):
     plt.savefig(fname)
     #plt.show()
 
-def reconst_f(output_dir, b_sph):
-    params_file = os.path.join(output_dir, 'params.pickle')
-    gtab_file = os.path.join(output_dir, 'gtab.pickle')
-    S_data_file = os.path.join(output_dir, 'S_data.np')
-
-    baseparams = pickle.load(open(params_file, 'rb'))
-    gtab = pickle.load(open(gtab_file, 'rb'))
-    S_data = np.load(open(S_data_file, 'rb'))
-
-    l_labels = np.sum(gtab.bvals > 0)
-    imagedims = S_data.shape[:-1]
-    b_vecs = gtab.bvecs[gtab.bvals > 0,...]
-    qball_sphere = Sphere(xyz=b_vecs)
-    basemodel = CsaOdfModel(gtab, **baseparams['base'])
-    f = basemodel.fit(S_data).odf(qball_sphere)
-    f = np.clip(f, 0, np.max(f, -1)[..., None])
-    f = np.array(f.reshape(-1, l_labels).T, order='C')
-    normalize_odf(f, b_sph.b)
-    return np.array(f.reshape(l_labels, -1).T, order='C')
-
 def load_b_sph(output_dir):
     gtab_file = os.path.join(output_dir, 'gtab.pickle')
     gtab = pickle.load(open(gtab_file, 'rb'))
     b_vecs = gtab.bvecs[gtab.bvals > 0,...]
     return load_sphere(vecs=b_vecs.T)
 
-def compute_peaks(output_dir, relative_peak_threshold=.5,
+def load_gt_img():
+    files, folder = fetch_isbi2013_challenge_gt()
+    groundtruth = os.path.join(folder, 'ground-truth-peaks.nii.gz')
+    niiGT = nib.load(groundtruth)
+    niiGT_hdr = niiGT.get_header()
+    return niiGT.get_data()[12:27,22,21:36]
+
+def compute_peaks(odfs, sphere, relative_peak_threshold=.5,
                   peak_normalize=1, min_separation_angle=45, max_peak_number=5):
+    if odfs.shape[0] == sphere.vertices.shape[0]:
+        odfs = np.array(odfs.reshape(odfs.shape[0], -1).T, order='C')
+    num_peak_coeffs = max_peak_number * 3
+    peaks = np.zeros(odfs.shape[:-1] + (num_peak_coeffs,))
+    for index in ndindex(odfs.shape[:-1]):
+        vox_peaks, values, _ = peak_directions(odfs[index], sphere,
+            float(relative_peak_threshold), float(min_separation_angle))
+        if peak_normalize == 1:
+            values /= values[0]
+            vox_peaks = vox_peaks * values[:, None]
+        vox_peaks = vox_peaks.ravel()
+        m = vox_peaks.shape[0]
+        if m > num_peak_coeffs:
+            m = num_peak_coeffs
+        peaks[index][:m] = vox_peaks[:m]
+    return peaks
+
+def dir_compute_peaks(output_dir, relative_peak_threshold=.5,
+                      peak_normalize=1, min_separation_angle=45,
+                      max_peak_number=5):
     peaks_file = os.path.join(output_dir, 'peaks.npz')
     result_file = os.path.join(output_dir, 'result_raw.pickle')
     result = pickle.load(open(result_file, 'rb'))[0]
@@ -101,44 +117,24 @@ def compute_peaks(output_dir, relative_peak_threshold=.5,
 
     b_sph = load_b_sph(output_dir)
     sphere = Sphere(xyz=b_sph.v.T)
-    f_noisy = reconst_f(output_dir, b_sph)
+    f_noisy = reconst_f(output_dir, b_sph)[0]
 
     l_labels = u_RECON.shape[0]
     imagedims = u_RECON.shape[1:]
-    u_RECON = np.array(u_RECON.reshape(l_labels, -1).T, order='C')
 
     num_peak_coeffs = max_peak_number * 3
     computed_peaks = []
     for odfs in [u_RECON, f_noisy]:
-        peaks = np.zeros(u_RECON.shape[:-1] + (num_peak_coeffs,))
-        for index in ndindex(odfs.shape[:-1]):
-            vox_peaks, values, _ = peak_directions(odfs[index], sphere,
-                                                   float(relative_peak_threshold),
-                                                   float(min_separation_angle))
-
-            if peak_normalize == 1:
-                values /= values[0]
-                vox_peaks = vox_peaks * values[:, None]
-
-            vox_peaks = vox_peaks.ravel()
-            m = vox_peaks.shape[0]
-            if m > num_peak_coeffs:
-                m = num_peak_coeffs
-            peaks[index][:m] = vox_peaks[:m]
+        peaks = compute_peaks(odfs, sphere, relative_peak_threshold=.5,
+                  peak_normalize=1, min_separation_angle=45, max_peak_number=5)
         computed_peaks.append(peaks.reshape(imagedims + (peaks.shape[-1],)))
 
     np.savez_compressed(peaks_file, computed_peaks)
     return computed_peaks
 
-def compute_err(peaks, groundtruth):
-    niiGT = nib.load(groundtruth)
-    niiGT_hdr = niiGT.get_header()
-    niiGT_img = niiGT.get_data()[12:27,22,21:36]
+def compute_err(peaks, niiGT_img):
     niiGT_dim = niiGT_img.shape
-    plot_peaks(os.path.join(output_dir, 'plot_gt_peaks.pdf'), niiGT_img)
-    niiRECON_img = peaks
-    niiMASK_img = np.ones_like(niiGT_img)
-    niiMASK_idx = niiMASK_img==1
+    niiRECON_img = peaks.reshape(niiGT_dim)
 
     # Correct estimation of the number of fiber compartments
     # Pd : probability of false fibre detection
@@ -162,30 +158,30 @@ def compute_err(peaks, groundtruth):
 
             # compute M_true, DIR_true, M_est, DIR_est
             M_true = 0
-            for d in range(5) :
+            for d in range(5):
                 dir = niiGT_img[x,y,range(d*3, d*3+3)]
                 f = norm(dir)
-                if f > 0 :
+                if f > 0:
                     DIR_true[:,M_true] = dir / f
                     M_true += 1
-            if M_true == 0 :
+            if M_true == 0:
                 # do not consider this voxel in the final score
                 continue    # no fiber compartments found in the voxel
 
             M_est = 0
-            for d in range(5) :
+            for d in range(5):
                 dir = niiRECON_img[x,y,range(d*3, d*3+3)]
                 f = norm(dir)
-                if f > 0 :
+                if f > 0:
                     DIR_est[:,M_est] = dir / f
                     M_est += 1
 
             # compute Pd, nM and nP
             M_diff = M_true - M_est
             Pd[x,y] = 100 * abs(M_diff) / M_true
-            if  M_diff > 0 :
+            if  M_diff > 0:
                 nM[x,y] = M_diff;
-            else :
+            else:
                 nP[x,y] = -M_diff
 
             # ANGULAR ACCURACY
@@ -193,9 +189,10 @@ def compute_err(peaks, groundtruth):
 
             # precompute matrix with angular errors among all estimated and true fibers
             A = np.zeros((M_true, M_est))
-            for i in range(0,M_true) :
-                for j in range(0,M_est) :
-                    err = acos(min(1.0, abs(np.dot(DIR_true[:,i], DIR_est[:,j])))) # crop to 1 for internal precision
+            for i in range(0,M_true):
+                for j in range(0,M_est):
+                    # crop to 1 for internal precision
+                    err = acos(min(1.0, abs(np.dot(DIR_true[:,i], DIR_est[:,j]))))
                     A[i,j] = min(err, pi-err) / pi * 180;
 
             # compute the "base" error
@@ -204,7 +201,7 @@ def compute_err(peaks, groundtruth):
             notUsed_true = np.array(range(0,M_true))
             notUsed_est  = np.array(range(0,M_est))
             AA = np.copy(A)
-            for i in range(0,M) :
+            for i in range(0,M):
                 err[i] = np.min(AA)
                 r, c = np.nonzero(AA==err[i])
                 AA[r[0],:] = float('Inf')
@@ -213,23 +210,28 @@ def compute_err(peaks, groundtruth):
                 notUsed_est  = notUsed_est[ notUsed_est  != c[0]]
 
             # account for OVER-ESTIMATES
-            if M_true < M_est :
+            if M_true < M_est:
                 if M_true > 0:
-                    for i in notUsed_est :
+                    for i in notUsed_est:
                         err = np.append(err, min(A[:,i]))
-                else :
+                else:
                     err = np.append(err, 45)
             # account for UNDER-ESTIMATES
-            elif M_true > M_est :
+            elif M_true > M_est:
                 if M_est > 0:
-                    for i in notUsed_true :
+                    for i in notUsed_true:
                         err = np.append(err, min(A[i,:]))
-                else :
+                else:
                     err = np.append(err, 45)
 
             AE[x,y] = np.mean(err)
 
-    values = Pd[niiMASK_idx]
+    return (Pd, nM, nP, AE)
+
+def print_peak_err(err):
+    (Pd, nM, nP, AE) = err
+
+    values = Pd
     print("Pd, mean   ", np.mean(values))
     print("Pd, std    ", np.std(values))
     print("Pd, min    ", np.min(values))
@@ -238,7 +240,7 @@ def compute_err(peaks, groundtruth):
     print("Pd, 75 perc", stats.scoreatpercentile(values,75))
     print("Pd, max    ", np.max(values))
 
-    values = nM[niiMASK_idx]
+    values = nM
     print("n-, mean   ", np.mean(values))
     print("n-, std    ", np.std(values))
     print("n-, min    ", np.min(values))
@@ -247,7 +249,7 @@ def compute_err(peaks, groundtruth):
     print("n-, 75 perc", stats.scoreatpercentile(values,75))
     print("n-, max    ", np.max(values))
 
-    values = nP[niiMASK_idx]
+    values = nP
     print("n+, mean   ", np.mean(values))
     print("n+, std    ", np.std(values))
     print("n+, min    ", np.min(values))
@@ -256,7 +258,7 @@ def compute_err(peaks, groundtruth):
     print("n+, 75 perc", stats.scoreatpercentile(values,75))
     print("n+, max    ", np.max(values))
 
-    values = AE[niiMASK_idx]
+    values = AE
     print("AE, mean   ", np.mean(values))
     print("AE, std    ", np.std(values))
     print("AE, min    ", np.min(values))
@@ -274,19 +276,21 @@ fetch_isbi2013_challenge_gt = _make_fetcher(
     ['fc3ecd9636d6130b0f0488812b3a341c',])
 
 if __name__ == "__main__":
-    files, folder = fetch_isbi2013_challenge_gt()
-    groundtruth = os.path.join(folder, 'ground-truth-peaks.nii.gz')
     basedirs = sys.argv[1:]
-
+    niiGT_img = load_gt_img()
     for i,output_dir in enumerate(basedirs):
         print("==> %s" % output_dir)
-        u_peaks, f_peaks = compute_peaks(output_dir, relative_peak_threshold=.5,
-                  peak_normalize=1, min_separation_angle=25, max_peak_number=5)
+        u_peaks, f_peaks = dir_compute_peaks(output_dir,
+            relative_peak_threshold=.5, peak_normalize=1,
+            min_separation_angle=25, max_peak_number=5)
 
         print("-> error of input")
-        compute_err(f_peaks, groundtruth)
+        err = compute_err(f_peaks, niiGT_img)
+        plot_peaks(os.path.join(output_dir, 'plot_gt_peaks.pdf'), niiGT_img)
+        print_peak_err(err)
         plot_peaks(os.path.join(output_dir, 'plot_f_peaks.pdf'), f_peaks)
 
         print("-> error of restored data set")
-        compute_err(u_peaks, groundtruth)
+        err = compute_err(u_peaks, niiGT_img)
+        print_peak_err(err)
         plot_peaks(os.path.join(output_dir, 'plot_u_peaks.pdf'), u_peaks)

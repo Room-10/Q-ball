@@ -35,8 +35,14 @@ def reconst_f(output_dir, b_sph=None):
 
     baseparams = pickle.load(open(params_file, 'rb'))
     gtab = pickle.load(open(gtab_file, 'rb'))
-    S_data_orig = np.load(open(S_data_orig_file, 'rb'))
     S_data = np.load(open(S_data_file, 'rb'))
+
+    S_data_list = [S_data]
+    try:
+        S_data_orig = np.load(open(S_data_orig_file, 'rb'))
+        S_data_list.append(S_data_orig)
+    except:
+        pass
 
     l_labels = np.sum(gtab.bvals > 0)
     imagedims = S_data.shape[:-1]
@@ -46,7 +52,7 @@ def reconst_f(output_dir, b_sph=None):
     qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
     basemodel = CsaOdfModel(gtab, **baseparams['base'])
     fs = []
-    for S in [S_data_orig, S_data]:
+    for S in S_data_list:
         f = basemodel.fit(S).odf(qball_sphere)
         f = np.clip(f, 0, np.max(f, -1)[..., None])
         f = np.array(f.reshape(-1, l_labels).T, order='C')
@@ -71,7 +77,12 @@ def compute_dists(output_dir, distfun,
         upd = result['u1']
 
     b_sph = load_b_sph(output_dir)
-    f_gt, f_noisy = reconst_f(output_dir, b_sph)
+    reconst = reconst_f(output_dir, b_sph)
+    if len(reconst) == 2:
+        f_gt, f_noisy = reconst
+    else:
+        f_noisy = reconst[0]
+        f_gt = f_noisy.copy()
 
     l_labels = upd.shape[0]
     upd = np.array(upd.reshape(l_labels, -1), order='C')
@@ -122,6 +133,10 @@ if __name__ == "__main__":
         basedirs = sys.argv[2:]
     elif sys.argv[1] == "kl": # Kullback-Leibler or entropy
         distfun = kl_dist
+        basedirs = sys.argv[2:]
+    elif sys.argv[1] == "peak":
+        from compute_peaks import peak_dist
+        distfun = peak_dist
         basedirs = sys.argv[2:]
 
     for i,output_dir in enumerate(basedirs):
