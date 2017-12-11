@@ -13,9 +13,10 @@ import logging
 
 def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix,
                     gradnorm="frobenius", lbd=1.0,
-                    constraint_u=None, inpaintloc=None, **kwargs):
+                    constraint_u=None, inpaintloc=None,
+                    conf_lvl=0.9, **kwargs):
     solver = MyPDHGModel(data, gtab, sampling_matrix, model_matrix,
-                         gradnorm=gradnorm, lbd=lbd,
+                         gradnorm=gradnorm, conf_lvl=conf_lvl, lbd=lbd,
                          constraint_u=constraint_u, inpaintloc=inpaintloc)
     details = solver.solve(**kwargs)
     return solver.state, details
@@ -23,7 +24,8 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix,
 class MyPDHGModel(PDHGModelHARDI):
     def __init__(self, data, gtab, sampling_matrix, model_matrix,
                        gradnorm="frobenius",
-                       constraint_u=None, inpaintloc=None, **kwargs):
+                       constraint_u=None, inpaintloc=None,
+                       conf_lvl=0.9, **kwargs):
         PDHGModelHARDI.__init__(self, data, gtab, **kwargs)
 
         c = self.constvars
@@ -38,7 +40,7 @@ class MyPDHGModel(PDHGModelHARDI):
         m_gradients = c['m_gradients']
         r_points = c['r_points']
 
-        c['fl'], c['fu'] = compute_bounds(e['b_sph'], data)
+        c['fl'], c['fu'] = compute_bounds(e['b_sph'], data, alpha=conf_lvl)
 
         c['Y'] = np.zeros(sampling_matrix.shape, order='C')
         c['Y'][:] = sampling_matrix
