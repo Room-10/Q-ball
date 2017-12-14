@@ -1,5 +1,5 @@
 
-from qball.tools.bounds import compute_bounds
+from qball.tools.bounds import compute_hardi_bounds
 from qball.tools.blocks import BlockVar
 from qball.tools.cvx import cvxVariable, sparse_div_op, cvxOp
 from qball.sphere import load_sphere
@@ -19,7 +19,7 @@ def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
     l_labels = b_sph.mdims['l_labels']
     assert(data.shape[-1] == l_labels)
 
-    fl, fu = compute_bounds(b_sph, data)
+    fl, fu = compute_hardi_bounds(b_sph, data)
 
     Y = np.zeros(sampling_matrix.shape, order='C')
     Y[:] = sampling_matrix

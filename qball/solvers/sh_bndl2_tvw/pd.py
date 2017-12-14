@@ -1,6 +1,6 @@
 
 from qball.tools import apply_PB
-from qball.tools.bounds import compute_bounds
+from qball.tools.bounds import compute_hardi_bounds
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import project_gradients, norms_spectral, norms_nuclear
 from qball.tools.diff import gradient, divergence
@@ -40,7 +40,7 @@ class MyPDHGModel(PDHGModelHARDI):
         m_gradients = c['m_gradients']
         r_points = c['r_points']
 
-        c['fl'], c['fu'] = compute_bounds(e['b_sph'], data, alpha=conf_lvl)
+        c['fl'], c['fu'] = compute_hardi_bounds(e['b_sph'], data, alpha=conf_lvl)
 
         c['Y'] = np.zeros(sampling_matrix.shape, order='C')
         c['Y'][:] = sampling_matrix

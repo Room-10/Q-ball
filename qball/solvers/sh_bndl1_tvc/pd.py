@@ -1,5 +1,5 @@
 
-from qball.tools.bounds import compute_bounds
+from qball.tools.bounds import compute_hardi_bounds
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import norms_frobenius, project_duals
 from qball.tools.diff import gradient, divergence
@@ -34,7 +34,7 @@ class MyPDHGModel(PDHGModelHARDI):
         d_image = c['d_image']
         l_labels = c['l_labels']
 
-        c['fl'], c['fu'] = compute_bounds(e['b_sph'], data, alpha=conf_lvl)
+        c['fl'], c['fu'] = compute_hardi_bounds(e['b_sph'], data, alpha=conf_lvl)
 
         c['Y'] = np.zeros(sampling_matrix.shape, order='C')
         c['Y'][:] = sampling_matrix

@@ -28,7 +28,7 @@ cross_mask = np.rot90(np.array([
     [ 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0],
     [ 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
     [ 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0],
-], dtype=bool), k=3)
+], dtype=bool), k=3)[:,:,None]
 
 def print_params(output_dir):
     params_file = os.path.join(output_dir, 'params.pickle')
