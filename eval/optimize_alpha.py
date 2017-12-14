@@ -57,8 +57,8 @@ class AlphaOptimizer(ParamOptimizer):
         d = opt.fulldists[opt.par_key(lbd)]
         self.fulldists[self.par_key(alpha)] = d
         d_sum = np.sum(d)
-        logging.info("%s=%s: %.5f (min: %.5f, max: %.5f)" % \
-            (self.par_name, self.par_key(alpha), d_sum, np.amin(d), np.amax(d)))
+        logging.info("%s=%s: %s=%.5f (min: %.5f, max: %.5f)" % \
+            (self.par_name, self.par_key(alpha), self.distname, d_sum, np.amin(d), np.amax(d)))
         self.dists[self.par_key(alpha)] = d_sum
 
 if __name__ == "__main__":

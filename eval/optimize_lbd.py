@@ -58,15 +58,15 @@ class LambdaOptimizer(ParamOptimizer):
             d = dists_npz['noise_%s' % distname]
             self.fulldists[self.par_key(0.0)] = d
             d_sum = np.sum(d)
-            logging.info("Noise: %.5f (min: %.5f, max: %.5f)" % \
-                (d_sum, np.amin(d), np.amax(d)))
+            logging.info("Noise: %s=%.5f (min: %.5f, max: %.5f)" % \
+                (distname, d_sum, np.amin(d), np.amax(d)))
             self.dists[self.par_key(0.0)] = d_sum
 
         d = dists_npz[distname]
         self.fulldists[self.par_key(lbd)] = d
         d_sum = np.sum(d)
-        logging.info("%s=%s: %.5f (min: %.5f, max: %.5f)" % \
-            (self.par_name, self.par_key(lbd), d_sum, np.amin(d), np.amax(d)))
+        logging.info("%s=%s: %s=%.5f (min: %.5f, max: %.5f)" % \
+            (self.par_name, self.par_key(lbd), distname, d_sum, np.amin(d), np.amax(d)))
         self.dists[self.par_key(lbd)] = d_sum
 
 if __name__ == "__main__":
