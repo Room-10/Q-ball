@@ -14,7 +14,7 @@ from scipy.special import i0
 from functools import partial
 from multiprocessing import Pool
 
-from qball.tools import matrix2brl
+from qball.tools import matrix2brl, clip_hardi_data
 
 def logi0_large(x):
     return x - 0.5*np.log(2*np.pi*x)
@@ -110,19 +110,17 @@ def rice_nu_paramci(d, sigma, alpha=None, thresh=None):
 
     return tuple(result)
 
-def rice_paramci_batch(data, alpha, mask):
+def rice_nu_paramci_batch(data, sigma, alpha):
     """ Compute `alpha` fidelity bounds for `data` corrupted with Rician noise
-
-    The scaling parameter sigma of the Rice distribution is estimated from
-    "background" pixels which are determined by the foreground mask `mask`.
 
     Args:
         data : numpy array of shape (B,N)
             N values, B iid noisy samples each
+        sigma : scaling parameter of underlying Rice distribution
         alpha : confidence level
-        mask : numpy array of shape (N,) containing 1s and 0s (foreground mask)
 
     Returns:
+        data_nu : maximum-likelihood estimate
         data_l, data_u : numpy arrays of shape (N,), lower and upper bounds
 
     Testing Code:
@@ -138,7 +136,8 @@ def rice_paramci_batch(data, alpha, mask):
     >>>     ground_truth = np.random.uniform(size=(N,))
     >>>     ground_truth[np.logical_not(mask)] = 0.5
     >>>     data = rice.rvs(ground_truth[None,:]/sigma, scale=sigma, size=(B,N))
-    >>>     data_nu, data_l, data_u = rice_paramci_batch(data, alpha, mask)
+    >>>     sigma = rice_sigma_mle(data, mask)
+    >>>     data_nu, data_l, data_u = rice_nu_paramci_batch(data, sigma, alpha)
     >>>     lower_dist = np.fmax(0, data_l - ground_truth)
     >>>     upper_dist = np.fmax(0, ground_truth - data_u)
     >>>     dist = np.sqrt(np.sum(lower_dist**2 + upper_dist**2))
@@ -146,17 +145,11 @@ def rice_paramci_batch(data, alpha, mask):
     """
     b_batch, n_values  = data.shape
 
-    # don't use more than 1000 samples for performance reasons
-    n_samples = min(b_batch*np.sum(np.logical_not(mask)), 1000)
-    samples = data[:,np.logical_not(mask)].ravel()[0:n_samples]
-    rice_nu, _, rice_scale = rice.fit(samples, floc=0)
-    logging.info('Estimated sigma=%.5f from n=%d samples.', rice_scale, n_samples)
-
     # Compute confidence intervals using the likelihood ratio test (LRT)
     data_l = np.zeros(n_values)
     data_u = np.zeros(n_values)
     thresh = chi2.ppf(1.0-alpha, 1)
-    paramci_partial = partial(rice_nu_paramci, sigma=rice_scale, thresh=thresh)
+    paramci_partial = partial(rice_nu_paramci, sigma=sigma, thresh=thresh)
 
     # parallelize using all available CPU cores
     p = Pool(processes=None)
@@ -166,24 +159,35 @@ def rice_paramci_batch(data, alpha, mask):
 
     return data_nu, data_l, data_u
 
-def clip_data(data, delta=1e-5):
-    """ Apply thresholding from Aganj 2010, equation 19. """
-    I1 = (data < 0)
-    I2 = (0 <= data) & (data < delta)
-    I4 = (1-delta <= data) & (data < 1)
-    I5 = (1.0 < data)
-    data[I1] = delta/2
-    data[I2] = delta/2 + data[I2]**2/(2*delta)
-    data[I4] = 1 - delta/2 - (1 - data[I4])**2/(2*delta)
-    data[I5] = 1 - delta/2
-
-def compute_hardi_bounds(b_sph, data, alpha, mask=None):
-    """ Compute fidelity bounds for HARDI signal `data`.
+def rice_sigma_mle(data, mask, max_samples=1000):
+    """  Estimate scaling parameter of the Rice distribution from background
 
     Args:
-        b_sph : Sphere object from b-vectors
-        data : numpy array of shape (B,X,Y,Z,L)
-            three-dim. (B-batch of) HARDI signals with L b-vectors
+        data : numpy array of shape (B,N)
+            N values, B iid noisy samples each
+        mask : numpy array of shape (N,) containing 1s and 0s (foreground mask)
+        max_samples : maximum number of samples used for performance reasons
+
+    Returns:
+        estimate of scaling parameter sigma
+    """
+    b_batch, n_values  = data.shape
+    n_samples = min(b_batch*np.sum(np.logical_not(mask)), max_samples)
+    samples = data[:,np.logical_not(mask)].ravel()[0:n_samples]
+    _, _, sigma = rice.fit(samples, floc=0)
+    logging.info('Estimated sigma=%.5f from n=%d samples.', sigma, n_samples)
+    return sigma
+
+def compute_hardi_bounds(data, alpha, mask=None):
+    """ Compute fidelity bounds for (subdomain) of HARDI signal `data`.
+
+    Args:
+        data : dict, data description
+            data['raw'] : numpy array of shape (B,X,Y,Z,L)
+                three-dim. (B-batch of) HARDI signals with L b-vectors
+            data['slice'] : indexing into (X,Y,Z) of raw data
+                bounds are only computed for this slice
+            data['b_sph'] : Sphere object from b-vectors
         alpha : confidence level
         mask : numpy array of shape (X,Y,Z)
             foreground mask, containing only 1s and 0s
@@ -191,42 +195,38 @@ def compute_hardi_bounds(b_sph, data, alpha, mask=None):
     Returns:
         fl, fu : numpy arrays of shape (L,N)
             lower and upper bounds for averaged log(-log(data))
-            the image dimensions are raveled, i.e. N=X*Y*Z
+            the image dimensions are raveled
     """
-    # for backwards compatibility, adapt image shape if necessary
-    if len(data.shape) < 5:
-        if len(data.shape) == 2:
-            # 1d image
-            data = data[:,None,None,:]
-        elif len(data.shape) == 3:
-            # 2d image
-            data = data[:,:,None,:]
-        data = data[None,:,:,:,:] # assume batch size 1
+    b_sph = data['b_sph']
+    data_raw = data['raw']
+    if len(data_raw.shape) < 5:
+        data_raw = data_raw[None]
 
-    b_batch = data.shape[0]
-    imagedims = data.shape[1:-1]
-    n_image = np.prod(imagedims)
-    d_image = len(imagedims)
+    b_batch = data_raw.shape[0]
     l_labels = b_sph.mdims['l_labels']
-    assert(data.shape[-1] == l_labels)
+    assert(data_raw.shape[-1] == l_labels)
 
     if mask is None:
         # automatically estimate foreground from histogram thresholding (Otsu)
-        mask = np.mean(data, axis=(0,-1))
+        mask = np.mean(data_raw, axis=(0,-1))
         thresh = otsu(mask)
         mask = (mask <= thresh)
         if len(np.squeeze(mask).shape) == 2:
             logging.debug("\n%s" % matrix2brl(np.squeeze(mask).astype(int)))
+    mask = np.tile(mask, (1,1,1,l_labels)).ravel()
+    sigma = rice_sigma_mle(data_raw.reshape(b_batch,-1), mask)
 
     logging.info('Computing confidence intervals with confidence level %.3f'
         ' from batch of size %d...', alpha, b_batch)
-    mask = np.tile(mask, (1,1,1,l_labels)).ravel()
-    data = data.reshape(b_batch,-1)
-    _, data_l, data_u = rice_paramci_batch(data, alpha, mask)
+    data_sliced = data_raw[(slice(None),) + data['slice']]
+    imagedims = data_sliced.shape[1:-1]
+    n_image = np.prod(imagedims)
+    data_flat = data_sliced.reshape(b_batch,-1)
+    _, data_l, data_u = rice_nu_paramci_batch(data_flat, sigma, alpha)
 
     # Postprocessing of bounds
-    clip_data(data_l)
-    clip_data(data_u)
+    clip_hardi_data(data_l)
+    clip_hardi_data(data_u)
     assert((data_l <= data_u).all())
 
     fl = np.zeros((l_labels, n_image), order='C')

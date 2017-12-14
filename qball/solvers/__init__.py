@@ -1,6 +1,6 @@
 
 from qball.sphere import load_sphere
-from qball.tools import truncate
+from qball.tools import truncate, clip_hardi_data
 from qball.tools.diff import staggered_diff_avgskips
 from qball.tools.blocks import block_normest
 import qball.util as util
@@ -307,10 +307,17 @@ class PDHGModel(object):
 class PDHGModelHARDI(PDHGModel):
     "Base class for PDHG solvers for HARDI reconstruction."
 
-    def __init__(self, data, gtab, lbd=1.0):
+    def __init__(self, data, model_params):
         PDHGModel.__init__(self)
-        b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
-        b_sph = load_sphere(vecs=b_vecs)
+        self.model_params = model_params
+        self.data = data
+
+        data = self.data['raw'][self.data['slice']]
+        if 'b_sph' not in self.data:
+            gtab = self.data['gtab']
+            b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
+            self.data['b_sph'] = load_sphere(vecs=b_vecs)
+        b_sph = self.data['b_sph']
 
         imagedims = data.shape[:-1]
         n_image = np.prod(imagedims)
@@ -326,7 +333,7 @@ class PDHGModelHARDI(PDHGModel):
         c = self.constvars
 
         c['avgskips'] = staggered_diff_avgskips(imagedims)
-        c['lbd'] = lbd
+        c['lbd'] = self.model_params.get('lbd', 1.0)
         c['b'] = b_sph.b
         c['A'] = b_sph.A
         c['B'] = b_sph.B
@@ -340,8 +347,21 @@ class PDHGModelHARDI(PDHGModel):
         c['d_image'] = d_image
         c['r_points'] = r_points
 
+        if 'constraint_u' in self.model_params:
+            c['constraint_u'] = self.model_params['constraint_u']
+        else:
+            c['constraint_u'] = np.zeros((l_labels,) + imagedims, order='C')
+            c['constraint_u'][:] = np.nan
+        uconstrloc = np.any(np.logical_not(np.isnan(c['constraint_u'])), axis=0)
+        c['uconstrloc'] = uconstrloc
+
+        inpaintloc = self.model_params.get('inpaintloc', np.zeros(imagedims))
+        c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
+        assert(c['inpaint_nloc'].shape == (n_image,))
+
         c['f'] = np.zeros((l_labels, n_image), order='C')
-        data_clipped = np.clip(data, np.spacing(1), 1-np.spacing(1))
+        data_clipped = data.copy()
+        clip_hardi_data(data_clipped)
         loglog_data = np.log(-np.log(data_clipped))
         c['f'][:] = loglog_data.reshape(-1, l_labels).T
         f_mean = np.einsum('ki,k->i', c['f'], c['b'])/(4*np.pi)
@@ -363,3 +383,26 @@ class PDHGModelHARDI(PDHGModel):
             'msd_skip': m_gradients*s_manifold*d_image,
             'ndl_skip': n_image*d_image*l_labels,
         }
+
+class PDHGModelHARDI_SHM(PDHGModelHARDI):
+    "Base class for PDHG solvers for HARDI reconstr. using spherical harmonics."
+    def __init__(self, *args):
+        PDHGModelHARDI.__init__(self, *args)
+
+        c = self.constvars
+
+        sampling_matrix = self.model_params['sampling_matrix']
+        c['Y'] = np.zeros(sampling_matrix.shape, order='C')
+        c['Y'][:] = sampling_matrix
+        l_shm = c['Y'].shape[1]
+        c['l_shm'] = l_shm
+
+        c['M'] = self.model_params['model_matrix']
+        assert(c['M'].size == c['l_shm'])
+
+        logging.info("HARDI PDHG setup ({l_labels} labels, {l_shm} shm; " \
+                     "img: {imagedims}; lambda={lbd:.3g}) ready.".format(
+                         lbd=c['lbd'],
+                         l_labels=c['l_labels'],
+                         l_shm=c['l_shm'],
+                         imagedims="x".join(map(str,c['imagedims']))))

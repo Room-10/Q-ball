@@ -4,6 +4,17 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 
 import numba
 
+def clip_hardi_data(data, delta=1e-5):
+    """ Apply thresholding from Aganj 2010, equation 19. """
+    I1 = (data < 0)
+    I2 = (0 <= data) & (data < delta)
+    I4 = (1-delta <= data) & (data < 1)
+    I5 = (1.0 < data)
+    data[I1] = delta/2
+    data[I2] = delta/2 + data[I2]**2/(2*delta)
+    data[I4] = 1 - delta/2 - (1 - data[I4])**2/(2*delta)
+    data[I5] = 1 - delta/2
+
 def truncate(x, n):
     k = -int(np.floor(np.log10(abs(x))))
     # Example: x = 0.006142 => k = 3 / x = 2341.2 => k = -3

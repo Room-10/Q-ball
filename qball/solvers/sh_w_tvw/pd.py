@@ -3,27 +3,21 @@ from qball.tools import normalize_odf, apply_PB
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import project_gradients, norms_spectral, norms_nuclear
 from qball.tools.diff import gradient, divergence
-from qball.solvers import PDHGModelHARDI
+from qball.solvers import PDHGModelHARDI_SHM
 
 import numpy as np
 from numpy.linalg import norm
 
 import logging
 
-def qball_regularization(f, gtab, sampling_matrix,
-                         lbd=1.0, dataterm="W1", gradnorm="frobenius",
-                         constraint_u=None, inpaintloc=None, **kwargs):
-    solver = MyPDHGModel(f, gtab, sampling_matrix,
-                         dataterm=dataterm, gradnorm=gradnorm, lbd=lbd,
-                         constraint_u=constraint_u, inpaintloc=inpaintloc)
-    details = solver.solve(**kwargs)
+def qball_regularization(data, model_params, solver_params):
+    solver = MyPDHGModel(data, model_params)
+    details = solver.solve(**solver_params)
     return solver.state, details
 
-class MyPDHGModel(PDHGModelHARDI):
-    def __init__(self, f, gtab, sampling_matrix,
-                       dataterm="W1", gradnorm="frobenius",
-                       constraint_u=None, inpaintloc=None, **kwargs):
-        PDHGModelHARDI.__init__(self, f, gtab, **kwargs)
+class MyPDHGModel(PDHGModelHARDI_SHM):
+    def __init__(self, *args):
+        PDHGModelHARDI_SHM.__init__(self, *args)
 
         c = self.constvars
         e = self.extravars
@@ -36,36 +30,20 @@ class MyPDHGModel(PDHGModelHARDI):
         s_manifold = c['s_manifold']
         m_gradients = c['m_gradients']
         r_points = c['r_points']
+        l_shm = c['l_shm']
 
-        f_flat = f.reshape(-1, l_labels).T
+        f_flat = self.model_params['odf'].reshape(-1, l_labels).T
         c['f'] = np.array(f_flat.reshape((l_labels,) + imagedims), order='C')
         normalize_odf(c['f'], c['b'])
 
-        c['Y'] = np.zeros(sampling_matrix.shape, order='C')
-        c['Y'][:] = sampling_matrix
-        l_shm = c['Y'].shape[1]
-        c['l_shm'] = l_shm
-
-        if constraint_u is None:
-            c['constraint_u'] = np.zeros((l_labels,) + imagedims, order='C')
-            c['constraint_u'][:] = np.nan
-        else:
-            c['constraint_u'] = constraint_u
-        uconstrloc = np.any(np.logical_not(np.isnan(c['constraint_u'])), axis=0)
-        c['uconstrloc'] = uconstrloc
-
-        if inpaintloc is None:
-            inpaintloc = np.zeros(imagedims)
-        c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
-        assert(c['inpaint_nloc'].shape == (n_image,))
-
+        dataterm = self.model_params.get('dataterm', "W1")
         if dataterm not in ["W1","quadratic"]:
             raise Exception("Dateterm unknown: %s" % dataterm)
-        c['dataterm']= dataterm
-        self.gpu_constvars['dataterm']= dataterm[0].upper()
+        c['dataterm'] = dataterm
+        self.gpu_constvars['dataterm'] = dataterm[0].upper()
 
-        c['gradnorm']= gradnorm
-        self.gpu_constvars['gradnorm']= gradnorm[0].upper()
+        c['gradnorm'] = self.model_params.get('gradnorm', "frobenius")
+        self.gpu_constvars['gradnorm']= c['gradnorm'][0].upper()
 
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 
@@ -91,16 +69,6 @@ class MyPDHGModel(PDHGModelHARDI):
 
         vk = i['xk']['v']
         vk[0,:] = .5 / np.sqrt(np.pi)
-
-        logging.info("HARDI PDHG setup ({l_labels} labels, {l_shm} shm, " \
-                     "m={m}; img: {imagedims}; dataterm: {dataterm}, " \
-                     "lambda={lbd:.3g}) ready.".format(
-                         lbd=c['lbd'],
-                         m=m_gradients,
-                         l_labels=l_labels,
-                         l_shm=l_shm,
-                         imagedims="x".join(map(str,imagedims)),
-                         dataterm=dataterm))
 
     def prepare_gpu(self):
         c = self.constvars
@@ -129,7 +97,7 @@ class MyPDHGModel(PDHGModelHARDI):
             resource_stream('qball.solvers.sh_w_tvw', 'cuda_dual.cu'),
         ]
 
-        PDHGModelHARDI.prepare_gpu(self)
+        PDHGModelHARDI_SHM.prepare_gpu(self)
 
         def gpu_kernels_linop(*args):
             self.cuda_kernels['linop1'](*args)

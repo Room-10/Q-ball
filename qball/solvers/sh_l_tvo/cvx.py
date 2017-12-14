@@ -8,7 +8,14 @@ import cvxpy as cvx
 
 import logging
 
-def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix, lbd=1.0):
+def fit_hardi_qball(data, model_params, solver_params={}):
+    sampling_matrix = model_params['sampling_matrix']
+    model_matrix = model_params['model_matrix']
+    lbd = model_params.get('lbd', 1.0)
+    data_ext = data
+    gtab = data_ext['gtab']
+    data = data_ext['raw'][data_ext['slice']]
+
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 

@@ -116,6 +116,7 @@ class QBallExperiment(Experiment):
         Experiment.init_params(self)
         self.params['model'] = self.model_name
         self.params['fit'] = {
+            'model_params': {},
             'solver_engine': 'cvx' if self.cvx else 'pd',
             'solver_params': {},
         }
@@ -156,7 +157,7 @@ class QBallExperiment(Experiment):
 
     def solve(self):
         if self.model_name == 'n_w_tvw':
-            self.params['fit']['sphere'] = self.qball_sphere
+            self.params['fit']['model_params']['sphere'] = self.qball_sphere
 
         if self.resume and self.pd_result is not None:
             self.continue_at = self.pd_result

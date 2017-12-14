@@ -10,17 +10,14 @@ from numpy.linalg import norm
 
 import logging
 
-def qball_regularization(f, gtab, lbd=1.0, dataterm="W1", gradnorm="frobenius",
-                                  constraint_u=None, inpaintloc=None, **kwargs):
-    solver = MyPDHGModel(f, gtab, dataterm=dataterm, gradnorm=gradnorm, lbd=lbd,
-                                  constraint_u=constraint_u, inpaintloc=inpaintloc)
-    details = solver.solve(**kwargs)
+def qball_regularization(data, model_params, solver_params):
+    solver = MyPDHGModel(data, model_params)
+    details = solver.solve(**solver_params)
     return solver.state, details
 
 class MyPDHGModel(PDHGModelHARDI):
-    def __init__(self, f, gtab, dataterm="W1", gradnorm="frobenius",
-                                constraint_u=None, inpaintloc=None, **kwargs):
-        PDHGModelHARDI.__init__(self, f, gtab, **kwargs)
+    def __init__(self, *args):
+        PDHGModelHARDI.__init__(self, *args)
 
         c = self.constvars
         e = self.extravars
@@ -35,10 +32,11 @@ class MyPDHGModel(PDHGModelHARDI):
         r_points = c['r_points']
         b_sph = e['b_sph']
 
-        f_flat = f.reshape(-1, l_labels).T
+        f_flat = self.model_params['odf'].reshape(-1, l_labels).T
         c['f'] = np.array(f_flat.reshape((l_labels,) + imagedims), order='C')
         normalize_odf(c['f'], c['b'])
 
+        dataterm = self.model_params.get('dataterm', "W1")
         if dataterm == "linear":
             """ Computes the cost vector from the reference image. """
             s = np.zeros((l_labels, n_image), order='C')
@@ -54,26 +52,13 @@ class MyPDHGModel(PDHGModelHARDI):
             """ Nothing to do, the provided f is the cost vector. """
             dataterm = "linear"
         elif dataterm not in ["W1","quadratic"]:
-            raise Exception("Dateterm unknown: %s" % dataterm)
+            raise Exception("Dataterm unknown: %s" % dataterm)
 
-        if constraint_u is None:
-            c['constraint_u'] = np.zeros((l_labels,) + imagedims, order='C')
-            c['constraint_u'][:] = np.nan
-        else:
-            c['constraint_u'] = constraint_u
-        uconstrloc = np.any(np.logical_not(np.isnan(c['constraint_u'])), axis=0)
-        c['uconstrloc'] = uconstrloc
-
-        if inpaintloc is None:
-            inpaintloc = np.zeros(imagedims)
-        c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
-        assert(c['inpaint_nloc'].shape == (n_image,))
-
-        c['dataterm']= dataterm
+        c['dataterm'] = dataterm
         self.gpu_constvars['dataterm']= dataterm[0].upper()
 
-        c['gradnorm']= gradnorm
-        self.gpu_constvars['gradnorm']= gradnorm[0].upper()
+        c['gradnorm'] = self.model_params.get('gradnorm', "frobenius")
+        self.gpu_constvars['gradnorm']= c['gradnorm'][0].upper()
 
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 

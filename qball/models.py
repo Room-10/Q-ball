@@ -3,28 +3,54 @@ import numpy as np
 
 import dipy.core.sphere
 from dipy.reconst.odf import OdfFit
-from dipy.reconst.shm import QballBaseModel, CsaOdfModel
+from dipy.reconst.shm import QballBaseModel, CsaOdfModel, SphHarmFit
 from dipy.reconst.csdeconv import ConstrainedSphericalDeconvModel
 
+def parse_data(data, gtab):
+    if type(data) is dict:
+        # already in extended format
+        return data
+    imagedims = data.shape[:-1]
+    d_image = len(imagedims)
+    if d_image == 1:
+        dt = data[:,None,None]
+        slc = (slice(None),0,0)
+    elif d_image == 2:
+        dt = data[:,:,None]
+        slc = (slice(None),slice(None),0)
+    else:
+        dt = data
+        slc = (slice(None),slice(None),slice(None))
+    return { 'raw': dt, 'slice': slc, 'gtab': gtab, }
+
 class n_w_tvw_Model(CsaOdfModel):
-    """ Implementation of Wasserstein-TV model from SSVM """
-    def fit(self, data, solver_engine="pd", solver_params={},
-            sphere=None, csd_response=None, **kwargs):
+    """ Implementation of Wasserstein-TV model from SSVM 2017 """
+    def fit(self, data, model_params={},
+            solver_engine="pd", solver_params={}, **kwargs):
+        data_ext = parse_data(data, self.gtab)
+        data = data_ext['raw'][data_ext['slice']]
+
         from qball.solvers.n_w_tvw.pd import qball_regularization
-        if sphere is None:
+
+        if 'sphere' not in model_params:
             b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
-            sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
-        if csd_response is not None:
-            csd_model = ConstrainedSphericalDeconvModel(self.gtab, csd_response)
-            odf_fit = csd_model.fit(data)
-        else:
-            odf_fit = CsaOdfModel.fit(self, data, **kwargs)
-        f = odf_fit.odf(sphere)
-        f = np.clip(f, 0, np.max(f, -1)[..., None])
-        pd_state, details = qball_regularization(f, self.gtab, **solver_params)
-        self.solver_state = pd_state
-        self.solver_details = details
-        u = pd_state[0]['u']
+            model_params['sphere'] = dipy.core.sphere.Sphere(xyz=b_vecs)
+        sphere = model_params['sphere']
+
+        if 'odf' not in model_params:
+            if 'csd_response' in model_params:
+                csd_response = model_params['csd_response']
+                csd_model = ConstrainedSphericalDeconvModel(self.gtab, csd_response)
+                odf_fit = csd_model.fit(data)
+            else:
+                odf_fit = CsaOdfModel.fit(self, data, **kwargs)
+            f = odf_fit.odf(sphere)
+            model_params['odf'] = np.clip(f, 0, np.max(f, -1)[..., None])
+
+        self.solver_state, self.solver_details = qball_regularization(
+            data_ext, model_params, solver_params)
+
+        u = self.solver_state[0]['u']
         l_labels, imagedims = u.shape[0], u.shape[1:]
         u = u.reshape(l_labels, -1).T.reshape(imagedims + (l_labels,))
         return _TrivialOdfFit(u, sphere)
@@ -42,31 +68,42 @@ class _TrivialOdfFit(OdfFit):
 
 class sh_w_tvw_Model(CsaOdfModel):
     """ Implementation of Wasserstein-TV model with SHM regularization """
-    def fit(self, data, solver_engine="cvx", solver_params={},
-            csd_response=None, **kwargs):
-        if solver_engine == "cvx":
-            from qball.solvers.sh_w_tvw.cvx import qball_regularization
-        else:
-            from qball.solvers.sh_w_tvw.pd import qball_regularization
-        self.solver_func = qball_regularization
-        self.solver_params = solver_params
-        if csd_response is not None:
+
+    def fit(self, data, model_params={},
+            solver_engine="cvx", solver_params={}, mask=None):
+        data_ext = parse_data(data, self.gtab)
+        data = data_ext['raw'][data_ext['slice']]
+
+        import importlib
+        module_name = "qball.solvers.sh_w_tvw.%s" % (solver_engine,)
+        module = importlib.import_module(module_name)
+        solver_func = getattr(module, 'qball_regularization')
+
+        if 'csd_response' in model_params:
+            csd_response = model_params['csd_response']
             csd_model = ConstrainedSphericalDeconvModel(self.gtab, csd_response)
             odf_fit = csd_model.fit(data)
         else:
-            odf_fit = CsaOdfModel.fit(self, data, **kwargs)
-        return odf_fit
+            odf_fit = CsaOdfModel.fit(self, data, mask)
 
-    def _get_shm_coef(self, data, mask=None):
-        """Returns the coefficients of the model"""
-        sh_coef = CsaOdfModel._get_shm_coef(self, data, mask)
+        sh_coef = odf_fit._shm_coef
         f = np.dot(sh_coef, self.B.T)
-        pd_state, details = self.solver_func(f, self.gtab,
-            sampling_matrix=self.B, **self.solver_params)
-        self.solver_state = pd_state
-        self.solver_details = details
-        sh_coef = pd_state[0]['v'].T.reshape(sh_coef.shape)
-        return sh_coef
+        model_params['odf'] = np.clip(f, 0, np.max(f, -1)[..., None])
+        model_params['sampling_matrix'] = self.B
+        Minv = np.zeros(self._fit_matrix_fw.shape)
+        Minv[1:] = 1.0/self._fit_matrix_fw[1:]
+        model_params['model_matrix'] = Minv
+
+        self.solver_state, self.solver_details = solver_func(
+            data_ext, model_params, solver_params)
+
+        sh_coef = self.solver_state[0]['v'].T.reshape(sh_coef.shape)
+        return SphHarmFit(self, sh_coef, mask)
+
+    def _set_fit_matrix(self, B, L, F, smooth):
+        """ The fit matrix describes the forward model. """
+        CsaOdfModel._set_fit_matrix(self, B, L, F, smooth)
+        self._fit_matrix_fw = (F * L) / (8 * np.pi)
 
 class _SH_HardiQballBaseModel(QballBaseModel):
     """ Base model for our SH-based HARDI-Q-Ball-fitters """
@@ -74,13 +111,19 @@ class _SH_HardiQballBaseModel(QballBaseModel):
     max = .999
     _n0_const = .5 / np.sqrt(np.pi)
 
-    def fit(self, *args, solver_engine="cvx", solver_params={}, **kwargs):
+    def fit(self, data, model_params={},
+            solver_engine="cvx", solver_params={}, **kwargs):
+        self.data_ext = parse_data(data, self.gtab)
+        self.model_params = model_params
+        self.solver_params = solver_params
+
         import importlib
         module_name = "qball.solvers.%s.%s" % (self.solver_name, solver_engine)
         module = importlib.import_module(module_name)
         self.solver_func = getattr(module, 'fit_hardi_qball')
-        self.solver_params = solver_params
-        return QballBaseModel.fit(self, *args, **kwargs)
+
+        data = self.data_ext['raw'][self.data_ext['slice']]
+        return QballBaseModel.fit(self, data, **kwargs)
 
     def _set_fit_matrix(self, B, L, F, smooth):
         """ The fit matrix describes the forward model. """
@@ -88,16 +131,14 @@ class _SH_HardiQballBaseModel(QballBaseModel):
 
     def _get_shm_coef(self, data, mask=None):
         """Returns the coefficients of the model"""
-        data = np.array(data, dtype=np.float64)
-        data = data[..., self._where_dwi]
-        data = data.clip(self.min, self.max)
         Minv = np.zeros(self._fit_matrix.shape)
         Minv[1:] = 1.0/self._fit_matrix[1:]
-        pd_state, details = self.solver_func(data, self.gtab,
-            sampling_matrix=self.B, model_matrix=Minv, **self.solver_params)
-        self.solver_state = pd_state
-        self.solver_details = details
-        sh_coef = pd_state[0]['v'].T.reshape(data.shape[:-1]+(self.B.shape[1],))
+        self.model_params['model_matrix'] = Minv
+        self.model_params['sampling_matrix'] = self.B
+        self.solver_state, self.solver_details = self.solver_func(
+            self.data_ext, self.model_params, self.solver_params)
+        sh_coef = self.solver_state[0]['v']
+        sh_coef = sh_coef.T.reshape(data.shape[:-1]+(self.B.shape[1],))
         sh_coef[..., 0] = self._n0_const
         return sh_coef
 

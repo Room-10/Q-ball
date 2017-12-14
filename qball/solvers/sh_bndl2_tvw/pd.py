@@ -4,29 +4,21 @@ from qball.tools.bounds import compute_hardi_bounds
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import project_gradients, norms_spectral, norms_nuclear
 from qball.tools.diff import gradient, divergence
-from qball.solvers import PDHGModelHARDI
+from qball.solvers import PDHGModelHARDI_SHM
 
 import numpy as np
 from numpy.linalg import norm
 
 import logging
 
-def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix,
-                    gradnorm="frobenius", lbd=1.0,
-                    constraint_u=None, inpaintloc=None,
-                    conf_lvl=0.9, **kwargs):
-    solver = MyPDHGModel(data, gtab, sampling_matrix, model_matrix,
-                         gradnorm=gradnorm, conf_lvl=conf_lvl, lbd=lbd,
-                         constraint_u=constraint_u, inpaintloc=inpaintloc)
-    details = solver.solve(**kwargs)
+def fit_hardi_qball(data, model_params, solver_params):
+    solver = MyPDHGModel(data, model_params)
+    details = solver.solve(**solver_params)
     return solver.state, details
 
-class MyPDHGModel(PDHGModelHARDI):
-    def __init__(self, data, gtab, sampling_matrix, model_matrix,
-                       gradnorm="frobenius",
-                       constraint_u=None, inpaintloc=None,
-                       conf_lvl=0.9, **kwargs):
-        PDHGModelHARDI.__init__(self, data, gtab, **kwargs)
+class MyPDHGModel(PDHGModelHARDI_SHM):
+    def __init__(self, *args):
+        PDHGModelHARDI_SHM.__init__(self, *args)
 
         c = self.constvars
         e = self.extravars
@@ -39,32 +31,18 @@ class MyPDHGModel(PDHGModelHARDI):
         s_manifold = c['s_manifold']
         m_gradients = c['m_gradients']
         r_points = c['r_points']
+        l_shm = c['l_shm']
 
-        c['fl'], c['fu'] = compute_hardi_bounds(e['b_sph'], data, alpha=conf_lvl)
-
-        c['Y'] = np.zeros(sampling_matrix.shape, order='C')
-        c['Y'][:] = sampling_matrix
-        l_shm = c['Y'].shape[1]
-        c['l_shm'] = l_shm
-
-        c['M'] = model_matrix
-        assert(model_matrix.size == l_shm)
-
-        if constraint_u is None:
-            c['constraint_u'] = np.zeros((l_labels,) + imagedims, order='C')
-            c['constraint_u'][:] = np.nan
+        if 'bounds' in self.model_params:
+            c['fl'], c['fu'] = self.model_params['bounds']
         else:
-            c['constraint_u'] = constraint_u
-        uconstrloc = np.any(np.logical_not(np.isnan(c['constraint_u'])), axis=0)
-        c['uconstrloc'] = uconstrloc
+            alpha = self.model_params.get('conf_lvl', 0.9)
+            c['fl'], c['fu'] = compute_hardi_bounds(self.data, alpha=alpha)
+            self.model_params['bounds'] = c['fl'], c['fu']
+            self.model_params['conf_lvl'] = alpha
 
-        if inpaintloc is None:
-            inpaintloc = np.zeros(imagedims)
-        c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
-        assert(c['inpaint_nloc'].shape == (n_image,))
-
-        c['gradnorm']= gradnorm
-        self.gpu_constvars['gradnorm']= gradnorm[0].upper()
+        c['gradnorm'] = self.model_params.get('gradnorm', "frobenius")
+        self.gpu_constvars['gradnorm'] = c['gradnorm'][0].upper()
 
         e['g_norms'] = np.zeros((n_image, m_gradients), order='C')
 
@@ -89,13 +67,6 @@ class MyPDHGModel(PDHGModelHARDI):
 
         vk = i['xk']['v']
         vk[0,:] = .5 / np.sqrt(np.pi)
-
-        logging.info("HARDI PDHG setup ({l_labels} labels, {l_shm} shm; " \
-                     "img: {imagedims}; lambda={lbd:.3g}) ready.".format(
-                         lbd=c['lbd'],
-                         l_labels=l_labels,
-                         l_shm=l_shm,
-                         imagedims="x".join(map(str,imagedims))))
 
     def prepare_gpu(self):
         c = self.constvars
@@ -123,7 +94,7 @@ class MyPDHGModel(PDHGModelHARDI):
             resource_stream('qball.solvers.sh_bndl2_tvw', 'cuda_dual.cu'),
         ]
 
-        PDHGModelHARDI.prepare_gpu(self)
+        PDHGModelHARDI_SHM.prepare_gpu(self)
 
         def gpu_kernels_linop(*args):
             self.cuda_kernels['linop1'](*args)

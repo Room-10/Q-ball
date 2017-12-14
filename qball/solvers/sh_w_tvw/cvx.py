@@ -9,7 +9,13 @@ import cvxpy as cvx
 
 import logging
 
-def qball_regularization(f, gtab, sampling_matrix, lbd=1.0):
+def qball_regularization(data, model_params, solver_params={}):
+    sampling_matrix = model_params['sampling_matrix']
+    lbd = model_params.get('lbd', 1.0)
+    data_ext = data
+    gtab = data_ext['gtab']
+    f = model_params['odf']
+
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)
 

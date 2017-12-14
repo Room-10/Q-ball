@@ -2,24 +2,21 @@
 from qball.tools.blocks import BlockVar
 from qball.tools.norm import norms_frobenius, project_duals
 from qball.tools.diff import gradient, divergence
-from qball.solvers import PDHGModelHARDI
+from qball.solvers import PDHGModelHARDI_SHM
 
 import numpy as np
 from numpy.linalg import norm
 
 import logging
 
-def fit_hardi_qball(data, gtab, sampling_matrix, model_matrix,
-                    lbd=1.0, constraint_u=None, inpaintloc=None, **kwargs):
-    solver = MyPDHGModel(data, gtab, sampling_matrix, model_matrix,
-                         lbd=lbd, constraint_u=constraint_u, inpaintloc=inpaintloc)
-    details = solver.solve(**kwargs)
+def fit_hardi_qball(data, model_params, solver_params):
+    solver = MyPDHGModel(data, model_params)
+    details = solver.solve(**solver_params)
     return solver.state, details
 
-class MyPDHGModel(PDHGModelHARDI):
-    def __init__(self, data, gtab, sampling_matrix, model_matrix,
-                       constraint_u=None, inpaintloc=None, **kwargs):
-        PDHGModelHARDI.__init__(self, data, gtab, **kwargs)
+class MyPDHGModel(PDHGModelHARDI_SHM):
+    def __init__(self, *args):
+        PDHGModelHARDI_SHM.__init__(self, *args)
 
         c = self.constvars
         e = self.extravars
@@ -29,27 +26,7 @@ class MyPDHGModel(PDHGModelHARDI):
         n_image = c['n_image']
         d_image = c['d_image']
         l_labels = c['l_labels']
-
-        c['Y'] = np.zeros(sampling_matrix.shape, order='C')
-        c['Y'][:] = sampling_matrix
-        l_shm = c['Y'].shape[1]
-        c['l_shm'] = l_shm
-
-        c['M'] = model_matrix
-        assert(model_matrix.size == l_shm)
-
-        if constraint_u is None:
-            c['constraint_u'] = np.zeros((l_labels,) + imagedims, order='C')
-            c['constraint_u'][:] = np.nan
-        else:
-            c['constraint_u'] = constraint_u
-        uconstrloc = np.any(np.logical_not(np.isnan(c['constraint_u'])), axis=0)
-        c['uconstrloc'] = uconstrloc
-
-        if inpaintloc is None:
-            inpaintloc = np.zeros(imagedims)
-        c['inpaint_nloc'] = np.ascontiguousarray(np.logical_not(inpaintloc)).ravel()
-        assert(c['inpaint_nloc'].shape == (n_image,))
+        l_shm = c['l_shm']
 
         e['p_norms'] = np.zeros((n_image,), order='C')
 
@@ -72,13 +49,6 @@ class MyPDHGModel(PDHGModelHARDI):
 
         vk = i['xk']['v']
         vk[0,:] = .5 / np.sqrt(np.pi)
-
-        logging.info("HARDI PDHG setup ({l_labels} labels, {l_shm} shm; " \
-                     "img: {imagedims}; lambda={lbd:.3g}) ready.".format(
-                         lbd=c['lbd'],
-                         l_labels=l_labels,
-                         l_shm=l_shm,
-                         imagedims="x".join(map(str,imagedims))))
 
     def prepare_gpu(self):
         c = self.constvars
@@ -104,7 +74,7 @@ class MyPDHGModel(PDHGModelHARDI):
             resource_stream('qball.solvers.sh_l_tvo', 'cuda_dual.cu'),
         ]
 
-        PDHGModelHARDI.prepare_gpu(self)
+        PDHGModelHARDI_SHM.prepare_gpu(self)
 
         self.gpu_kernels['linop'] = self.cuda_kernels['linop']
 
