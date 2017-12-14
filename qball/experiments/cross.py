@@ -5,69 +5,17 @@ import numpy as np
 from qball.experiments import QBallExperiment
 import qball.tools.gen as gen
 
-inpaint_mask = np.array([
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,1,1,1,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,1,1,1,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,1,1,1,0, 0,0,0,0,0],
-
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-    [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
-], dtype=bool)
-
 class MyExperiment(QBallExperiment):
     name = "cross"
     pd_solver_params = {
-        'n_w_tvw': {
-            'step_factor': 0.0001,
-            'step_bound': 1.25, # 0.971
-            # 'inpaintloc': inpaint_mask,
-        },
-        'sh_w_tvw': {
-            'step_factor': 0.001,
-            'step_bound': 0.08, # 0.0654
-            # 'inpaintloc': inpaint_mask,
-        },
-        'sh_l_tvc': {
-            'step_factor': 0.1,
-            'step_bound': 0.00135, # 0.00105
-            # 'inpaintloc': inpaint_mask,
-        },
-        'sh_l_tvo': {
-            'step_factor': 0.29,
-            'step_bound': 0.0014, # 0.00105
-            # 'inpaintloc': inpaint_mask,
-        },
-        'sh_l_tvw': {
-            'step_factor': 0.033,
-            'step_bound': 0.0014, # 0.00105
-            # 'inpaintloc': inpaint_mask,
-        },
-        'sh_bndl1_tvc': {
-            'step_factor': 0.1,
-            'step_bound': 0.00139, # 0.00105
-            # 'inpaintloc': inpaint_mask,
-        },
-        'sh_bndl2_tvc': {
-            'step_factor': 0.1,
-            'step_bound': 0.00139, # 0.00105
-            # 'inpaintloc': inpaint_mask,
-        },
-        'sh_bndl2_tvw': {
-            'step_factor': 0.033,
-            'step_bound': 0.00139, # 0.00105
-            # 'inpaintloc': inpaint_mask,
-        },
+        'n_w_tvw': { 'step_factor': 0.0001, 'step_bound': 1.25, }, # 0.971
+        'sh_w_tvw': { 'step_factor': 0.001, 'step_bound': 0.08, }, # 0.0654
+        'sh_l_tvc': { 'step_factor': 0.1, 'step_bound': 0.00135, }, # 0.00105
+        'sh_l_tvo': { 'step_factor': 0.29, 'step_bound': 0.0014, }, # 0.00105
+        'sh_l_tvw': { 'step_factor': 0.033, 'step_bound': 0.0014, }, # 0.00105
+        'sh_bndl1_tvc': { 'step_factor': 0.1, 'step_bound': 0.00139, }, # 0.00105
+        'sh_bndl2_tvc': { 'step_factor': 0.1, 'step_bound': 0.00139, }, # 0.00105
+        'sh_bndl2_tvw': { 'step_factor': 0.033, 'step_bound': 0.00139, }, # 0.00105
     }
 
     def __init__(self, args):
