@@ -13,6 +13,7 @@ import logging
 
 from qball.util import add_log_file, output_dir_name, output_dir_create, \
                        data_from_file, backup_source
+from qball.sphere import load_sphere
 
 class Experiment(object):
     """ Base class for experiments. """
@@ -87,7 +88,12 @@ class Experiment(object):
 
     def setup_imagedata(self): pass
 
-    def load_imagedata(self): pass
+    def load_imagedata(self):
+        data_file = os.path.join(self.output_dir, 'data.pickle')
+        self.data = data_from_file(data_file, format="pickle")
+        if self.data is None:
+            self.setup_imagedata()
+            pickle.dump(self.data, open(data_file, 'wb'))
 
     def postprocessing(self): pass
 
@@ -144,15 +150,21 @@ class QBallExperiment(Experiment):
         self.params['fit']['solver_params'].update(self.user_params[1])
 
     def load_imagedata(self):
-        data_file = os.path.join(self.output_dir, 'data.pickle')
-        self.data = data_from_file(data_file, format="pickle")
-        if self.data is None:
-            self.setup_imagedata()
-            pickle.dump(self.data, open(data_file, 'wb'))
+        Experiment.load_imagedata(self)
         self.params['base']['assume_normed'] = self.data['normed']
         gtab = self.data['gtab']
         b_vecs = gtab.bvecs[gtab.bvals > 0,...]
+        self.data['b_sph'] = load_sphere(vecs=b_vecs.T)
         self.qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
+
+        if "bnd" in self.model_name:
+            alpha = self.params['fit']['model_params'].get('conf_lvl', 0.9)
+            if 'bounds' not in self.data or self.data['bounds'][0] != alpha:
+                from qball.tools.bounds import compute_hardi_bounds
+                compute_hardi_bounds(self.data, alpha=alpha)
+                data_file = os.path.join(self.output_dir, 'data.pickle')
+                pickle.dump(self.data, open(data_file, 'wb'))
+            self.params['fit']['model_params']['conf_lvl'] = alpha
 
     def solve(self):
         if self.model_name == 'n_w_tvw':

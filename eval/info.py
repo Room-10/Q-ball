@@ -77,10 +77,13 @@ def print_bounds(output_dir):
     try:
         conf_lvl = params['fit']['model_params']['conf_lvl']
     except:
-        conf_lvl = float(input("conf_lvl: "))
+        if 'bounds' in data:
+            conf_lvl = data['bounds'][0]
+        else:
+            conf_lvl = float(input("conf_lvl: "))
 
-    fl, fu = compute_hardi_bounds(data, conf_lvl, mask=cross_mask,
-        assume_normed=data['normed'])
+    compute_hardi_bounds(data, conf_lvl, mask=cross_mask)
+    _, fl, fu = data['bounds']
 
     interv_sizes = fu-fl
     print("Range: %.2f ... %.2f" % (np.amin(fl),np.amax(fu)))

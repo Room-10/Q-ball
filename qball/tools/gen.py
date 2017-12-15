@@ -57,29 +57,18 @@ def synth_isbi2013(snr=30):
     S_data = np.array(img, order='C')
     return S_data.copy(), S_data, gtab
 
-def rw_stanford(snr=None, csd=False):
+def rw_stanford(snr=None):
     with redirect_stdout(open(os.devnull, "w")), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         img, gtab = read_stanford_hardi()
         assert(img.shape[-1] == gtab.bvals.size)
-        data = img.get_data()
+        S_data = img.get_data()
 
     S_data_orig = S_data.copy()
     if snr is not None:
         S_data[:] = add_noise(S_data_orig, snr=snr)
 
-    if csd:
-        resp_file = "cache/resp-stanford_hardi.pickle"
-        try:
-            resp = pickle.load(open(resp_file, 'rb'))
-        except:
-            logging.info("No cached response function, estimating...")
-            resp = csd_response(gtab, data)
-            pickle.dump(resp, open(resp_file, 'wb'))
-    else:
-        resp = None
-
-    return S_data_orig, S_data, gtab, resp
+    return S_data_orig, S_data, gtab
 
 def synth_unimodals(bval=3000, imagedims=(8,), jiggle=10, snr=None):
     d_image = len(imagedims)

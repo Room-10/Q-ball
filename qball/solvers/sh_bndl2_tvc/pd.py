@@ -29,13 +29,9 @@ class MyPDHGModel(PDHGModelHARDI_SHM):
         l_labels = c['l_labels']
         l_shm = c['l_shm']
 
-        if 'bounds' in self.model_params:
-            c['fl'], c['fu'] = self.model_params['bounds']
-        else:
-            alpha = self.model_params.get('conf_lvl', 0.9)
-            c['fl'], c['fu'] = compute_hardi_bounds(self.data, alpha=alpha)
-            self.model_params['bounds'] = c['fl'], c['fu']
-            self.model_params['conf_lvl'] = alpha
+        alpha = self.model_params.get('conf_lvl', 0.9)
+        compute_hardi_bounds(self.data, alpha=alpha)
+        _, c['fl'], c['fu'] = self.data['bounds']
 
         e['p_norms'] = np.zeros((n_image,), order='C')
 

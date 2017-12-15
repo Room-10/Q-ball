@@ -40,13 +40,14 @@ class Sphere(object):
         """
         if vecs is None:
             vecs, tris = trisphere(refinement)
+            vecs = normalize(vecs)
         else:
-            assert vecs.shape[0] == 3
+            assert(vecs.shape[0] == 3)
+            vecs = normalize(vecs)
             sv = SphericalVoronoi(vecs.T)
             sv.sort_vertices_of_regions()
             tris = sv._tri.simplices.T
-        assert tris.shape[0] == 3
-        vecs = normalize(vecs) # re-normalize
+        assert(tris.shape[0] == 3)
 
         s_manifold = 2
         m_gradients = tris.shape[1]

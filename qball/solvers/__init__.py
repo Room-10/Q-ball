@@ -1,5 +1,4 @@
 
-from qball.sphere import load_sphere
 from qball.tools import truncate, clip_hardi_data
 from qball.tools.diff import staggered_diff_avgskips
 from qball.tools.blocks import block_normest
@@ -313,9 +312,6 @@ class PDHGModelHARDI(PDHGModel):
         self.data = data
 
         gtab = self.data['gtab']
-        if 'b_sph' not in self.data:
-            b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
-            self.data['b_sph'] = load_sphere(vecs=b_vecs)
         b_sph = self.data['b_sph']
 
         data = self.data['raw'][self.data['slice']]

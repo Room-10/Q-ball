@@ -1,5 +1,5 @@
 
-import logging
+import logging, pickle
 import numpy as np
 
 from qball.experiments import QBallExperiment
@@ -28,7 +28,7 @@ class MyExperiment(QBallExperiment):
 
     def setup_imagedata(self):
         logging.info("Data setup.")
-        S_data_orig, S_data, gtab, resp = gen.rw_stanford(snr=None, csd=True)
+        S_data_orig, S_data, gtab, resp = gen.rw_stanford(snr=None)
         self.data = {
             'gtab': gtab,
             'raw': S_data,
@@ -44,5 +44,12 @@ class MyExperiment(QBallExperiment):
         S_data = np.array(maskdata[13:43, 44:74, 28], order='C')
         """
 
-        if self.model_name in ["sh_w_tvw", "n_w_tvw"]:
+        if self.model_name in ["sh_w_tvw", "n_w_tvw"] and False:
+            resp_file = "cache/resp-stanford_hardi.pickle"
+            try:
+                resp = pickle.load(open(resp_file, 'rb'))
+            except:
+                logging.info("No cached response function, estimating...")
+                resp = gen.csd_response(gtab, S_data)
+                pickle.dump(resp, open(resp_file, 'wb'))
             self.data['csd_response'] = resp

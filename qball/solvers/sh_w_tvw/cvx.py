@@ -2,7 +2,6 @@
 from qball.tools import normalize_odf
 from qball.tools.blocks import BlockVar
 from qball.tools.cvx import cvxVariable, sparse_div_op, cvxOp
-from qball.sphere import load_sphere
 
 import numpy as np
 import cvxpy as cvx
@@ -13,11 +12,8 @@ def qball_regularization(data, model_params, solver_params={}):
     sampling_matrix = model_params['sampling_matrix']
     lbd = model_params.get('lbd', 1.0)
     data_ext = data
-    gtab = data_ext['gtab']
     f = data_ext['odf']
-
-    b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
-    b_sph = load_sphere(vecs=b_vecs)
+    b_sph = data['b_sph']
 
     imagedims = f.shape[:-1]
     n_image = np.prod(imagedims)

@@ -42,7 +42,7 @@ def logi0_appx(x, thresh=700, pad=50):
 
     return result
 
-def rice_nu_paramci(d, sigma, alpha=None, thresh=None, max_signal=1e5):
+def rice_nu_paramci(d, sigma, alpha=None, thresh=None, max_signal=1.0):
     """ Estimate structural parameter `nu` of a Rice distribution
 
     The estimation uses the likelihood ratio test (LRT) and assumes the scaling
@@ -106,7 +106,7 @@ def rice_nu_paramci(d, sigma, alpha=None, thresh=None, max_signal=1e5):
 
     return tuple(result)
 
-def rice_nu_paramci_batch(data, sigma, alpha, max_signal=1e5):
+def rice_nu_paramci_batch(data, sigma, alpha, max_signal=1.0):
     """ Compute `alpha` fidelity bounds for `data` corrupted with Rician noise
 
     Args:
@@ -156,7 +156,7 @@ def rice_nu_paramci_batch(data, sigma, alpha, max_signal=1e5):
 
     return data_nu, data_l, data_u
 
-def rice_sigma_mle(data, mask, max_samples=10000):
+def rice_sigma_mle(data, mask, max_samples=int(1e5)):
     """  Estimate scaling parameter of the Rice distribution from background
 
     Args:
@@ -190,19 +190,26 @@ def compute_hardi_bounds(data, alpha, mask=None):
             foreground mask, containing only 1s and 0s
 
     Returns:
+        nothing, sets data['bounds'] to (alpha, fl, fu), where
         fl, fu : numpy arrays of shape (L,N)
             lower and upper bounds for averaged log(-log(data))
             the image dimensions are raveled
     """
-    b_sph = data['b_sph']
+    if 'bounds' in data and data['bounds'][0] == alpha:
+        return
+
     data_raw = np.array(data['raw'], dtype=np.float64)
-    where_b0 = (data['gtab'].bvals == 0)
-    where_dwi = (data['gtab'].bvals > 0)
     if len(data_raw.shape) < 5:
         data_raw = data_raw[None]
+    where_b0 = (data['gtab'].bvals == 0)
+    where_dwi = (data['gtab'].bvals > 0)
+
+    # scale data to [0.0,0.8] (restored after parameter estimation)
+    scaling_factor = np.amax(data_raw.ravel())/0.8
+    data_raw /= scaling_factor
 
     b_batch = data_raw.shape[0]
-    l_labels = b_sph.mdims['l_labels']
+    l_labels = data['b_sph'].mdims['l_labels']
 
     if mask is None:
         # automatically estimate foreground from histogram thresholding (Otsu)
@@ -213,6 +220,7 @@ def compute_hardi_bounds(data, alpha, mask=None):
             logging.debug("\n%s" % matrix2brl(mask[data['slice']].astype(int)))
     mask = np.tile(mask, (1,1,1,data_raw.shape[-1])).ravel()
     sigma = rice_sigma_mle(data_raw.reshape(b_batch,-1), mask)
+    logging.info('Rescaled sigma=%.5f.', sigma*scaling_factor)
 
     logging.info('Computing confidence intervals with confidence level %.3f'
         ' from batch of size %d...', alpha, b_batch)
@@ -220,12 +228,15 @@ def compute_hardi_bounds(data, alpha, mask=None):
     imagedims = data_sliced.shape[1:-1]
     n_image = np.prod(imagedims)
     data_flat = data_sliced.reshape(b_batch,-1)
-    _, data_l, data_u = rice_nu_paramci_batch(data_flat, sigma, alpha,
-        max_signal=1.0-np.spacing(1) if data['normed'] else 1e5)
+    _, data_l, data_u = rice_nu_paramci_batch(data_flat, sigma, alpha)
 
-    # Postprocessing of bounds
-    data_l = data_l.reshape(data_sliced.shape)
-    data_u = data_u.reshape(data_sliced.shape)
+    # -------------- Postprocessing of bounds ----------------------------------
+
+    # Restore original scaling
+    data_l = scaling_factor*data_l.reshape(data_sliced.shape)
+    data_u = scaling_factor*data_u.reshape(data_sliced.shape)
+
+    # normalize data according to b0-image
     if not data['normed']:
         data_l.clip(1.0, out=data_l)
         data_u.clip(1.0, out=data_u)
@@ -235,21 +246,23 @@ def compute_hardi_bounds(data, alpha, mask=None):
         data_u /= b0_l[...,None]
     data_l = data_l[...,where_dwi]
     data_u = data_u[...,where_dwi]
+
+    # clip data away from 0 and 1
     clip_hardi_data(data_l)
     clip_hardi_data(data_u)
     assert((data_l <= data_u).all())
 
+    # apply log(-log)
     fl = np.zeros((l_labels, n_image), order='C')
     fu = np.zeros((l_labels, n_image), order='C')
-
     fl[:] = np.log(-np.log(data_u)).reshape(-1, l_labels).T
     fu[:] = np.log(-np.log(data_l)).reshape(-1, l_labels).T
     assert((fl <= fu).all())
 
-    fl_mean = np.einsum('ki,k->i', fl, b_sph.b)/(4*np.pi)
-    fu_mean = np.einsum('ki,k->i', fu, b_sph.b)/(4*np.pi)
-
+    # subtract mean
+    fl_mean = np.einsum('ki,k->i', fl, data['b_sph'].b)/(4*np.pi)
+    fu_mean = np.einsum('ki,k->i', fu, data['b_sph'].b)/(4*np.pi)
     fu -= fl_mean
     fl -= fu_mean
 
-    return fl, fu
+    data['bounds'] = (alpha, fl, fu)
