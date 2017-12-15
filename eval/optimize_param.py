@@ -12,7 +12,7 @@ class ParamOptimizer(object):
     tol = 4e-2
 
     def __init__(self, experiment, model, basedir=None, dist=l2_dist,
-                 resume=False, redist=False, cvx=False, params=""):
+                 resume=False, redist=False, cvx=False, params=("","")):
         self.experiment = experiment
         self.model = model
         if basedir is not None:

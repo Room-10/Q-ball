@@ -43,9 +43,9 @@ class AlphaOptimizer(ParamOptimizer):
             shutil.copytree(self.basedir, output_dir,
                             ignore=shutil.ignore_patterns("*.log","*.zip"))
 
-        exp_params = 'conf_lvl=%f' % (1.0-alpha)
-        if len(self.params) > 0:
-            exp_params = '%s,%s' % (exp_params, self.params)
+        exp_params = ('conf_lvl=%f' % (1.0-alpha), self.params[1])
+        if len(self.params[0]) > 0:
+            exp_params[0] = '%s,%s' % (exp_params[0], self.params[0])
         logging.info("=> Optimizing lambda for dist '%s' and basedir '%s'..." % \
               (parsed_args.dist, output_dir))
         opt = LambdaOptimizer(self.experiment, self.model, basedir=output_dir,
@@ -58,7 +58,8 @@ class AlphaOptimizer(ParamOptimizer):
         self.fulldists[self.par_key(alpha)] = d
         d_sum = np.sum(d)
         logging.info("%s=%s: %s=%.5f (min: %.5f, max: %.5f)" % \
-            (self.par_name, self.par_key(alpha), self.distname, d_sum, np.amin(d), np.amax(d)))
+            (self.par_name, self.par_key(alpha),
+             self.distname, d_sum, np.amin(d), np.amax(d)))
         self.dists[self.par_key(alpha)] = d_sum
 
 if __name__ == "__main__":
@@ -67,7 +68,8 @@ if __name__ == "__main__":
     parser.add_argument('experiment', metavar='EXPERIMENT', type=str)
     parser.add_argument('model', metavar='MODEL', type=str)
     parser.add_argument('--basedir', metavar='BASENAME', type=str, default="")
-    parser.add_argument('--params', metavar='PARAMS', type=str, default="")
+    parser.add_argument('--model-params', metavar='PARAMS', type=str, default="")
+    parser.add_argument('--solver-params', metavar='PARAMS', type=str, default="")
     parser.add_argument('--resume', action="store_true", default=False)
     parser.add_argument('--redist', action="store_true", default=False,
                         help="Recalculate distances.")
@@ -92,7 +94,7 @@ if __name__ == "__main__":
     opt = AlphaOptimizer(exp.MyExperiment, parsed_args.model, basedir=basedir,
                          dist=distfun, resume=parsed_args.resume,
                          redist=parsed_args.redist, cvx=parsed_args.cvx,
-                         params=parsed_args.params)
+                         params=(parsed_args.model_params, parsed_args.solver_params))
     opt.run()
     logging.info("==> Optimal alpha for dist '%s' and basedir '%s': %.4f" % \
           (parsed_args.dist, basedir, 1-opt.result))

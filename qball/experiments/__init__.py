@@ -35,7 +35,10 @@ class Experiment(object):
                             help="Use CVX as solver engine.")
         parser.add_argument('--seed', metavar="SEED", default=None, type=int,
                             help="Random seed for noise generation.")
-        parser.add_argument('--params', metavar='SOLVER_PARAMS',
+        parser.add_argument('--model-params', metavar='PARAMS',
+                            default='', type=str,
+                            help="Params to be applied to the model.")
+        parser.add_argument('--solver-params', metavar='PARAMS',
                             default='', type=str,
                             help="Params to be passed to the solver.")
         parsed_args = parser.parse_args(args)
@@ -44,7 +47,8 @@ class Experiment(object):
             self.output_dir = output_dir_name("%s-%s" % (self.name, self.model_name))
         else:
             self.output_dir = parsed_args.output
-        self.user_params = eval("dict(%s)" % parsed_args.params)
+        self.user_params = (eval("dict(%s)" % parsed_args.model_params),
+                            eval("dict(%s)" % parsed_args.solver_params))
         self.cvx = parsed_args.cvx
         self.resume = parsed_args.resume
         self.plot_mode = parsed_args.plot
@@ -136,7 +140,8 @@ class QBallExperiment(Experiment):
         }
 
     def apply_user_params(self):
-        self.params['fit']['solver_params'].update(self.user_params)
+        self.params['fit']['model_params'].update(self.user_params[0])
+        self.params['fit']['solver_params'].update(self.user_params[1])
 
     def load_imagedata(self):
         gtab_file = os.path.join(self.output_dir, 'gtab.pickle')

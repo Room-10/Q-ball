@@ -29,11 +29,12 @@ class LambdaOptimizer(ParamOptimizer):
             run_exp = True
 
         if run_exp:
-            exp_params = 'lbd=%f' % lbd
-            if len(self.params) > 0:
-                exp_params = '%s,%s' % (exp_params, self.params)
+            exp_params = ('lbd=%f' % lbd, self.params[1])
+            if len(self.params[0]) > 0:
+                exp_params[0] = '%s,%s' % (exp_params[0], self.params[0])
             exp_args = [self.model, '--output', output_dir, '--plot','no']
-            exp_args += ['--params', exp_params]
+            exp_args += ['--model-params', exp_params[0]]
+            exp_args += ['--solver-params', exp_params[1]]
             if self.resume:
                 exp_args.append('--resume')
             if self.cvx:
@@ -75,7 +76,8 @@ if __name__ == "__main__":
     parser.add_argument('experiment', metavar='EXPERIMENT', type=str)
     parser.add_argument('model', metavar='MODEL', type=str)
     parser.add_argument('--basedir', metavar='BASENAME', type=str, default="")
-    parser.add_argument('--params', metavar='PARAMS', type=str, default="")
+    parser.add_argument('--model-params', metavar='PARAMS', type=str, default="")
+    parser.add_argument('--solver-params', metavar='PARAMS', type=str, default="")
     parser.add_argument('--resume', action="store_true", default=False)
     parser.add_argument('--redist', action="store_true", default=False,
                         help="Recalculate distances.")
@@ -100,7 +102,7 @@ if __name__ == "__main__":
     opt = LambdaOptimizer(exp.MyExperiment, parsed_args.model, basedir=basedir,
                           dist=distfun, resume=parsed_args.resume,
                           redist=parsed_args.redist, cvx=parsed_args.cvx,
-                          params=parsed_args.params)
+                          params=(parsed_args.model_params, parsed_args.solver_params))
     opt.run()
     logging.info("==> Optimal lambda for dist '%s' and basedir '%s': %.4f" % \
           (parsed_args.dist, basedir, opt.result))
