@@ -54,7 +54,7 @@ def synth_isbi2013(snr=30):
         warnings.simplefilter("ignore")
         img, gtab = read_isbi2013_challenge(snr=snr)
         assert(img.shape[-1] == gtab.bvals.size)
-    S_data = np.array(img[12:27,22,21:36], order='C')
+    S_data = np.array(img, order='C')
     return S_data.copy(), S_data, gtab
 
 def rw_stanford(snr=None, csd=False):
@@ -63,17 +63,6 @@ def rw_stanford(snr=None, csd=False):
         img, gtab = read_stanford_hardi()
         assert(img.shape[-1] == gtab.bvals.size)
         data = img.get_data()
-
-    if False:
-        # from dipy qbi-csa example (used for SSVM):
-        # http://nipy.org/dipy/examples_built/reconst_csa.html
-        maskdata, mask = median_otsu(data, median_radius=3, numpass=1,
-            autocrop=True, vol_idx=range(10, 50), dilate=2)
-        S_data = np.array(maskdata[13:43, 44:74, 28], order='C')
-    else:
-        # from dipy csd example:
-        # http://nipy.org/dipy/examples_built/reconst_csd.html
-        S_data = np.array(data[20:50, 55:85, 38], order='C')
 
     S_data_orig = S_data.copy()
     if snr is not None:

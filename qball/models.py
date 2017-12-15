@@ -45,7 +45,7 @@ class n_w_tvw_Model(CsaOdfModel):
             else:
                 odf_fit = CsaOdfModel.fit(self, data, **kwargs)
             f = odf_fit.odf(sphere)
-            model_params['odf'] = np.clip(f, 0, np.max(f, -1)[..., None])
+            data_ext['odf'] = np.clip(f, 0, np.max(f, -1)[..., None])
 
         self.solver_state, self.solver_details = qball_regularization(
             data_ext, model_params, solver_params)
@@ -79,8 +79,8 @@ class sh_w_tvw_Model(CsaOdfModel):
         module = importlib.import_module(module_name)
         solver_func = getattr(module, 'qball_regularization')
 
-        if 'csd_response' in model_params:
-            csd_response = model_params['csd_response']
+        if 'csd_response' in data_ext:
+            csd_response = data_ext['csd_response']
             csd_model = ConstrainedSphericalDeconvModel(self.gtab, csd_response)
             odf_fit = csd_model.fit(data)
         else:
@@ -88,7 +88,7 @@ class sh_w_tvw_Model(CsaOdfModel):
 
         sh_coef = odf_fit._shm_coef
         f = np.dot(sh_coef, self.B.T)
-        model_params['odf'] = np.clip(f, 0, np.max(f, -1)[..., None])
+        data_ext['odf'] = np.clip(f, 0, np.max(f, -1)[..., None])
         model_params['sampling_matrix'] = self.B
         Minv = np.zeros(self._fit_matrix_fw.shape)
         Minv[1:] = 1.0/self._fit_matrix_fw[1:]

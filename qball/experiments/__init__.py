@@ -144,20 +144,14 @@ class QBallExperiment(Experiment):
         self.params['fit']['solver_params'].update(self.user_params[1])
 
     def load_imagedata(self):
-        gtab_file = os.path.join(self.output_dir, 'gtab.pickle')
-        S_data_file = os.path.join(self.output_dir, 'S_data.np')
-        S_data_orig_file = os.path.join(self.output_dir, 'S_data_orig.np')
-
-        self.gtab = data_from_file(gtab_file, format="pickle")
-        self.S_data = data_from_file(S_data_file)
-        self.S_data_orig = data_from_file(S_data_orig_file)
-        if self.S_data is None:
+        data_file = os.path.join(self.output_dir, 'data.pickle')
+        self.data = data_from_file(data_file, format="pickle")
+        if self.data is None:
             self.setup_imagedata()
-            pickle.dump(self.gtab, open(gtab_file, 'wb'))
-            np.save(open(S_data_file, 'wb'), self.S_data)
-            np.save(open(S_data_orig_file, 'wb'), self.S_data_orig)
-        self.imagedims = self.S_data.shape[:-1]
-        b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
+            pickle.dump(self.data, open(data_file, 'wb'))
+        self.params['base']['assume_normed'] = self.data['normed']
+        gtab = self.data['gtab']
+        b_vecs = gtab.bvecs[gtab.bvals > 0,...]
         self.qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
 
     def solve(self):
@@ -170,8 +164,8 @@ class QBallExperiment(Experiment):
 
         import qball.models
         MyModel = getattr(qball.models, '%s_Model' % self.model_name)
-        self.model = MyModel(self.gtab, **self.params['base'])
-        self.model.fit(self.S_data, **self.params['fit'])
+        self.model = MyModel(self.data['gtab'], **self.params['base'])
+        self.model.fit(self.data, **self.params['fit'])
         self.pd_result = self.model.solver_state
         self.details = self.model.solver_details
 
@@ -181,16 +175,18 @@ class QBallExperiment(Experiment):
         self.upd = self.upd.reshape(l_labels, -1)
         self.upd = np.array(self.upd.T, order='C').reshape(imagedims + (l_labels,))
 
-        if 'csd_response' in self.params['fit'] \
-           and self.params['fit']['csd_response'] is not None:
+        if 'csd_response' in self.data \
+           and self.data['csd_response'] is not None:
             logging.info("Using CSD for ground truth reconstruction.")
-            basemodel = ConstrainedSphericalDeconvModel(self.gtab, \
-                self.params['fit']['csd_response'])
+            basemodel = ConstrainedSphericalDeconvModel(self.data['gtab'], \
+                self.data['csd_response'])
         else:
-            basemodel = CsaOdfModel(self.gtab, **self.params['base'])
-        f = basemodel.fit(self.S_data).odf(self.qball_sphere)
+            basemodel = CsaOdfModel(self.data['gtab'], **self.params['base'])
+        S_data = self.data['raw'][self.data['slice']]
+        S_data_orig = self.data['ground-truth'][self.data['slice']]
+        f = basemodel.fit(S_data).odf(self.qball_sphere)
         self.fin = np.clip(f, 0, np.max(f, -1)[..., None])
-        f = basemodel.fit(self.S_data_orig).odf(self.qball_sphere)
+        f = basemodel.fit(S_data_orig).odf(self.qball_sphere)
         self.fin_orig = np.clip(f, 0, np.max(f, -1)[..., None])
 
     def prepare_plot_camera(self, slicedims, datalen=1, scale=1.0):

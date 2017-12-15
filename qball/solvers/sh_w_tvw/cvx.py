@@ -14,7 +14,7 @@ def qball_regularization(data, model_params, solver_params={}):
     lbd = model_params.get('lbd', 1.0)
     data_ext = data
     gtab = data_ext['gtab']
-    f = model_params['odf']
+    f = data_ext['odf']
 
     b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
     b_sph = load_sphere(vecs=b_vecs)

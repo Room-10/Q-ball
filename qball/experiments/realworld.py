@@ -28,8 +28,21 @@ class MyExperiment(QBallExperiment):
 
     def setup_imagedata(self):
         logging.info("Data setup.")
-        self.S_data_orig, self.S_data, self.gtab, resp = \
-                                            gen.rw_stanford(snr=None, csd=True)
+        S_data_orig, S_data, gtab, resp = gen.rw_stanford(snr=None, csd=True)
+        self.data = {
+            'gtab': gtab,
+            'raw': S_data,
+            'ground-truth': S_data_orig,
+            'slice': (slice(20,50), slice(55,85), 38),
+            'normed': False,
+        }
+        """
+        # from dipy qbi-csa example (used for SSVM):
+        # http://nipy.org/dipy/examples_built/reconst_csa.html
+        maskdata, mask = median_otsu(data, median_radius=3, numpass=1,
+            autocrop=True, vol_idx=range(10, 50), dilate=2)
+        S_data = np.array(maskdata[13:43, 44:74, 28], order='C')
+        """
 
         if self.model_name in ["sh_w_tvw", "n_w_tvw"]:
-            self.params['fit']['csd_response'] = resp
+            self.data['csd_response'] = resp

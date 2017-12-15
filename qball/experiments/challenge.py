@@ -27,4 +27,11 @@ class MyExperiment(QBallExperiment):
 
     def setup_imagedata(self):
         logging.info("Data setup.")
-        self.S_data_orig, self.S_data, self.gtab = gen.synth_isbi2013()
+        S_data_orig, S_data, gtab = gen.synth_isbi2013()
+        self.data = {
+            'gtab': gtab,
+            'raw': S_data,
+            'ground-truth': S_data_orig,
+            'slice': (slice(12,27),22,slice(21,36)),
+            'normed': False,
+        }

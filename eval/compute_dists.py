@@ -22,27 +22,24 @@ def l2_dist(f1, f2, b_sph):
     return np.sqrt(np.einsum('k,ki->i', b_sph.b, (f1 - f2)**2))
 
 def load_b_sph(output_dir):
-    gtab_file = os.path.join(output_dir, 'gtab.pickle')
-    gtab = pickle.load(open(gtab_file, 'rb'))
+    data_file = os.path.join(output_dir, 'data.pickle')
+    data = pickle.load(open(data_file, 'rb'))
+    gtab = data['gtab']
     b_vecs = gtab.bvecs[gtab.bvals > 0,...]
     return load_sphere(vecs=b_vecs.T)
 
 def reconst_f(output_dir, b_sph=None):
     params_file = os.path.join(output_dir, 'params.pickle')
-    gtab_file = os.path.join(output_dir, 'gtab.pickle')
-    S_data_orig_file = os.path.join(output_dir, 'S_data_orig.np')
-    S_data_file = os.path.join(output_dir, 'S_data.np')
+    data_file = os.path.join(output_dir, 'data.pickle')
 
     baseparams = pickle.load(open(params_file, 'rb'))
-    gtab = pickle.load(open(gtab_file, 'rb'))
-    S_data = np.load(open(S_data_file, 'rb'))
+    data = pickle.load(open(data_file, 'rb'))
+    gtab = data['gtab']
+    S_data = data['raw'][data['slice']]
 
     S_data_list = [S_data]
-    try:
-        S_data_orig = np.load(open(S_data_orig_file, 'rb'))
-        S_data_list.append(S_data_orig)
-    except:
-        pass
+    if 'ground-truth' in data:
+        S_data_list.append(data['ground-truth'][data['slice']])
 
     l_labels = np.sum(gtab.bvals > 0)
     imagedims = S_data.shape[:-1]

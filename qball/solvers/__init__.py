@@ -312,12 +312,19 @@ class PDHGModelHARDI(PDHGModel):
         self.model_params = model_params
         self.data = data
 
-        data = self.data['raw'][self.data['slice']]
+        gtab = self.data['gtab']
         if 'b_sph' not in self.data:
-            gtab = self.data['gtab']
             b_vecs = gtab.bvecs[gtab.bvals > 0,...].T
             self.data['b_sph'] = load_sphere(vecs=b_vecs)
         b_sph = self.data['b_sph']
+
+        data = self.data['raw'][self.data['slice']]
+        data = np.array(data, dtype=np.float64, copy=True)
+        if not self.data['normed']:
+            data.clip(1.0, out=data)
+            b0 = data[...,(gtab.bvals == 0)].mean(-1)
+            data /= b0[...,None]
+        data = data[...,gtab.bvals > 0]
 
         imagedims = data.shape[:-1]
         n_image = np.prod(imagedims)
@@ -360,9 +367,8 @@ class PDHGModelHARDI(PDHGModel):
         assert(c['inpaint_nloc'].shape == (n_image,))
 
         c['f'] = np.zeros((l_labels, n_image), order='C')
-        data_clipped = data.copy()
-        clip_hardi_data(data_clipped)
-        loglog_data = np.log(-np.log(data_clipped))
+        clip_hardi_data(data)
+        loglog_data = np.log(-np.log(data))
         c['f'][:] = loglog_data.reshape(-1, l_labels).T
         f_mean = np.einsum('ki,k->i', c['f'], c['b'])/(4*np.pi)
         c['f'] -= f_mean

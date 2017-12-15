@@ -29,4 +29,11 @@ class MyExperiment(QBallExperiment):
 
     def setup_imagedata(self):
         logging.info("Data setup.")
-        self.S_data_orig, self.S_data, self.gtab = gen.synth_unimodals()
+        S_data_orig, S_data, gtab = gen.synth_unimodals()
+        self.data = {
+            'gtab': gtab,
+            'raw': S_data[:,None,None,:],
+            'ground-truth': S_data_orig[:,None,None,:],
+            'slice': (slice(None),0,0),
+            'normed': True,
+        }

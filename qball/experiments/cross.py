@@ -28,8 +28,14 @@ class MyExperiment(QBallExperiment):
 
     def setup_imagedata(self):
         logging.info("Data setup.")
-        self.S_data_orig, self.S_data, \
-            self.gtab, self.phantom = gen.synth_cross(snr=10)
+        S_data_orig, S_data, gtab, self.phantom = gen.synth_cross(snr=10)
+        self.data = {
+            'gtab': gtab,
+            'raw': S_data[:,:,None,:],
+            'ground-truth': S_data_orig[:,:,None,:],
+            'slice': (slice(None),slice(None),0),
+            'normed': True,
+        }
 
     def plot(self):
         QBallExperiment.plot(self)

@@ -42,7 +42,7 @@ def logi0_appx(x, thresh=700, pad=50):
 
     return result
 
-def rice_nu_paramci(d, sigma, alpha=None, thresh=None):
+def rice_nu_paramci(d, sigma, alpha=None, thresh=None, max_signal=1e5):
     """ Estimate structural parameter `nu` of a Rice distribution
 
     The estimation uses the likelihood ratio test (LRT) and assumes the scaling
@@ -80,11 +80,10 @@ def rice_nu_paramci(d, sigma, alpha=None, thresh=None):
     #   optimal_nu = rice.fit(d, floc=0, fscale=rice_scale)[0]*rice_scale
     #
     # solve explicit minimization problem instead:
-    opt_res = minimize_scalar(func_pdf, bounds=(0.0,1.0),
+    opt_res = minimize_scalar(func_pdf, bounds=(0.0,max_signal),
         method='bounded', options={ 'xatol': np.sqrt(np.spacing(1)) })
     assert(opt_res.success)
     optimal_nu = opt_res.x
-    assert(optimal_nu >= 0.0 and optimal_nu <= 1.0)
 
     # determine confidence intervals for optimal_nu using LRT
     #
@@ -103,14 +102,11 @@ def rice_nu_paramci(d, sigma, alpha=None, thresh=None):
         result[1] = np.spacing(1)
 
     # determine root right of optimal_nu:
-    if func_lrt(1.0 - np.spacing(1)) < 0:
-        result[2] = brentq(func_lrt, optimal_nu, 1.0 - np.spacing(1))
-    else:
-        result[2] = 1.0 - np.spacing(1)
+    result[2] = brentq(func_lrt, optimal_nu, max_signal)
 
     return tuple(result)
 
-def rice_nu_paramci_batch(data, sigma, alpha):
+def rice_nu_paramci_batch(data, sigma, alpha, max_signal=1e5):
     """ Compute `alpha` fidelity bounds for `data` corrupted with Rician noise
 
     Args:
@@ -149,7 +145,8 @@ def rice_nu_paramci_batch(data, sigma, alpha):
     data_l = np.zeros(n_values)
     data_u = np.zeros(n_values)
     thresh = chi2.ppf(1.0-alpha, 1)
-    paramci_partial = partial(rice_nu_paramci, sigma=sigma, thresh=thresh)
+    paramci_partial = partial(rice_nu_paramci, sigma=sigma, thresh=thresh,
+        max_signal=max_signal)
 
     # parallelize using all available CPU cores
     p = Pool(processes=None)
@@ -159,7 +156,7 @@ def rice_nu_paramci_batch(data, sigma, alpha):
 
     return data_nu, data_l, data_u
 
-def rice_sigma_mle(data, mask, max_samples=1000):
+def rice_sigma_mle(data, mask, max_samples=10000):
     """  Estimate scaling parameter of the Rice distribution from background
 
     Args:
@@ -198,22 +195,23 @@ def compute_hardi_bounds(data, alpha, mask=None):
             the image dimensions are raveled
     """
     b_sph = data['b_sph']
-    data_raw = data['raw']
+    data_raw = np.array(data['raw'], dtype=np.float64)
+    where_b0 = (data['gtab'].bvals == 0)
+    where_dwi = (data['gtab'].bvals > 0)
     if len(data_raw.shape) < 5:
         data_raw = data_raw[None]
 
     b_batch = data_raw.shape[0]
     l_labels = b_sph.mdims['l_labels']
-    assert(data_raw.shape[-1] == l_labels)
 
     if mask is None:
         # automatically estimate foreground from histogram thresholding (Otsu)
-        mask = np.mean(data_raw, axis=(0,-1))
+        mask = np.mean(data_raw[...,where_dwi], axis=(0,-1))
         thresh = otsu(mask)
         mask = (mask <= thresh)
-        if len(np.squeeze(mask).shape) == 2:
-            logging.debug("\n%s" % matrix2brl(np.squeeze(mask).astype(int)))
-    mask = np.tile(mask, (1,1,1,l_labels)).ravel()
+        if len(mask[data['slice']].shape) == 2:
+            logging.debug("\n%s" % matrix2brl(mask[data['slice']].astype(int)))
+    mask = np.tile(mask, (1,1,1,data_raw.shape[-1])).ravel()
     sigma = rice_sigma_mle(data_raw.reshape(b_batch,-1), mask)
 
     logging.info('Computing confidence intervals with confidence level %.3f'
@@ -222,9 +220,21 @@ def compute_hardi_bounds(data, alpha, mask=None):
     imagedims = data_sliced.shape[1:-1]
     n_image = np.prod(imagedims)
     data_flat = data_sliced.reshape(b_batch,-1)
-    _, data_l, data_u = rice_nu_paramci_batch(data_flat, sigma, alpha)
+    _, data_l, data_u = rice_nu_paramci_batch(data_flat, sigma, alpha,
+        max_signal=1.0-np.spacing(1) if data['normed'] else 1e5)
 
     # Postprocessing of bounds
+    data_l = data_l.reshape(data_sliced.shape)
+    data_u = data_u.reshape(data_sliced.shape)
+    if not data['normed']:
+        data_l.clip(1.0, out=data_l)
+        data_u.clip(1.0, out=data_u)
+        b0_l = data_l[...,where_b0].mean(-1)
+        b0_u = data_u[...,where_b0].mean(-1)
+        data_l /= b0_u[...,None]
+        data_u /= b0_l[...,None]
+    data_l = data_l[...,where_dwi]
+    data_u = data_u[...,where_dwi]
     clip_hardi_data(data_l)
     clip_hardi_data(data_u)
     assert((data_l <= data_u).all())

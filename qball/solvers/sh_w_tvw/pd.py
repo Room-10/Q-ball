@@ -32,7 +32,7 @@ class MyPDHGModel(PDHGModelHARDI_SHM):
         r_points = c['r_points']
         l_shm = c['l_shm']
 
-        f_flat = self.model_params['odf'].reshape(-1, l_labels).T
+        f_flat = self.data['odf'].reshape(-1, l_labels).T
         c['f'] = np.array(f_flat.reshape((l_labels,) + imagedims), order='C')
         normalize_odf(c['f'], c['b'])
 
