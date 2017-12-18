@@ -148,12 +148,14 @@ fetch_isbi2013_challenge = _make_fetcher(
         'testing-data_DWIS_hardi-scheme_SNR-20.nii.gz',
         'testing-data_DWIS_hardi-scheme_SNR-30.nii.gz',
         'hardi-scheme.bval', 'hardi-scheme.bvec',
+        'ground-truth-peaks.nii.gz',
     ],
     [
         'hardi-scheme_SNR-10.nii.gz',
         'hardi-scheme_SNR-20.nii.gz',
         'hardi-scheme_SNR-30.nii.gz',
         'hardi-scheme.bval', 'hardi-scheme.bvec',
+        'ground-truth-peaks.nii.gz',
     ],
     [
         'c3d97559f418358bb69467a0b5809630',
@@ -161,6 +163,7 @@ fetch_isbi2013_challenge = _make_fetcher(
         'a508716c5eec555a77a34817acafb0ca',
         '92811d6e800a6a56d7498b0c4b5ed0c2',
         'c8f5025b9d91037edb6cd00af9bd3e41',
+        'fc3ecd9636d6130b0f0488812b3a341c',
     ])
 
 def read_isbi2013_challenge(snr=30):
@@ -191,6 +194,21 @@ def read_isbi2013_challenge(snr=30):
     bvals = np.concatenate((bvals, bvals[bvals > 0]), axis=0)
     gtab = gradient_table(bvals, bvecs)
     return img, gtab
+
+def read_isbi2013_challenge_gt():
+    """ Load ISBI 2013's HARDI reconstruction challenge ground truth (peaks)
+
+    Returns
+    -------
+        numpy array of shape (X,Y,Z,15)
+        at most 5 peaks per voxel, to be read as follows:
+        >>> voxel_peaks = [peaks[x,y,z,(d*3):(d*3+3)] for d in range(5)]
+    """
+    files, folder = fetch_isbi2013_challenge()
+    groundtruth = os.path.join(folder, 'ground-truth-peaks.nii.gz')
+    niiGT = nib.load(groundtruth)
+    niiGT_hdr = niiGT.get_header()
+    return niiGT.get_data()
 
 def uniform_signal(gtab, snr=None):
     mevals = np.array([[300e-6, 300e-6, 300e-6]])

@@ -6,12 +6,10 @@ import numpy as np
 from numpy.linalg import norm
 from scipy import stats
 
-import nibabel as nib
 from dipy.core.ndindex import ndindex
 from dipy.direction.peaks import peak_directions
 from dipy.core.sphere import Sphere
 from dipy.reconst.shm import CsaOdfModel
-from dipy.data.fetcher import _make_fetcher, dipy_home
 
 try:
     import qball
@@ -19,12 +17,13 @@ except:
     import set_qball_path
 from qball.sphere import load_sphere
 from qball.tools import normalize_odf
+from qball.tools.gen import read_isbi2013_challenge_gt
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from compute_dists import reconst_f
+from compute_dists import reconst_f, load_b_sph
 
 def peak_dist(_, u, b_sph):
     sphere = Sphere(xyz=b_sph.v.T)
@@ -59,7 +58,7 @@ def plot_peaks(fname, peaks):
                 peak = peaks[x,y,range(d*3, d*3+3)]
                 f = norm(peak)
                 if f > 0:
-                    peak /= f
+                    #peak /= f
                     data = np.array([
                         mid[:] - 0.5*peak_scaling*peak[[0,2]],
                         mid[:] + 0.5*peak_scaling*peak[[0,2]]
@@ -70,19 +69,6 @@ def plot_peaks(fname, peaks):
         wspace=0.03, hspace=0)
     plt.savefig(fname)
     #plt.show()
-
-def load_b_sph(output_dir):
-    gtab_file = os.path.join(output_dir, 'gtab.pickle')
-    gtab = pickle.load(open(gtab_file, 'rb'))
-    b_vecs = gtab.bvecs[gtab.bvals > 0,...]
-    return load_sphere(vecs=b_vecs.T)
-
-def load_gt_img():
-    files, folder = fetch_isbi2013_challenge_gt()
-    groundtruth = os.path.join(folder, 'ground-truth-peaks.nii.gz')
-    niiGT = nib.load(groundtruth)
-    niiGT_hdr = niiGT.get_header()
-    return niiGT.get_data()[12:27,22,21:36]
 
 def compute_peaks(odfs, sphere, relative_peak_threshold=.5,
                   peak_normalize=1, min_separation_angle=45, max_peak_number=5):
@@ -267,17 +253,9 @@ def print_peak_err(err):
     print("AE, 75 perc", stats.scoreatpercentile(values,75))
     print("AE, max    ", np.max(values))
 
-fetch_isbi2013_challenge_gt = _make_fetcher(
-    "fetch_isbi2013_challenge_gt",
-    os.path.join(dipy_home, 'isbi2013_challenge'),
-    'http://hardi.epfl.ch/static/events/2013_ISBI/_downloads/',
-    ['ground-truth-peaks.nii.gz',],
-    ['ground-truth-peaks.nii.gz',],
-    ['fc3ecd9636d6130b0f0488812b3a341c',])
-
 if __name__ == "__main__":
     basedirs = sys.argv[1:]
-    niiGT_img = load_gt_img()
+    niiGT_img = read_isbi2013_challenge_gt()[12:27,22,21:36]
     for i,output_dir in enumerate(basedirs):
         print("==> %s" % output_dir)
         u_peaks, f_peaks = dir_compute_peaks(output_dir,
