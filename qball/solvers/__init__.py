@@ -256,6 +256,7 @@ class PDHGModel(object):
 
         logging.info("Solving (steps<%d)..." % term_maxiter)
 
+        interrupted = False
         with util.GracefulInterruptHandler() as interrupt_hdl:
             _iter = 0
             while _iter < term_maxiter:
@@ -264,6 +265,7 @@ class PDHGModel(object):
 
                 if interrupt_hdl.interrupted or _iter % granularity == 0:
                     if interrupt_hdl.interrupted:
+                        interrupted = True
                         logging.info("Interrupt (SIGINT) at iter=%d" % _iter)
 
                     if use_gpu:
@@ -296,7 +298,9 @@ class PDHGModel(object):
             'objd': obj_d,
             'infeasp': infeas_p,
             'infeasd': infeas_d,
-            'relgap': relgap
+            'relgap': relgap,
+            'iterations': _iter,
+            'interrupted': interrupted
         }
 
     @property

@@ -1,5 +1,5 @@
 
-import os, shutil
+import sys, os, shutil
 import numpy as np
 
 from compute_dists import l2_dist, compute_dists
@@ -41,6 +41,12 @@ class LambdaOptimizer(ParamOptimizer):
                 exp_args.append('--cvx')
             exp = self.experiment(exp_args)
             exp.run()
+            if exp.details['interrupted']:
+                # User interrupted this computation, remove unfinished stuff
+                logging.info("User interrupt computation, cleaning up...")
+                shutil.rmtree(output_dir)
+                logging.info("")
+                sys.exit(1)
 
         distname = self.dist.__name__
         dists_npz = {}
