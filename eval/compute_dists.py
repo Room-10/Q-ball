@@ -122,22 +122,27 @@ def compute_dists(output_dir, distfun,
     return dists_npz
 
 if __name__ == "__main__":
+    from argparse import ArgumentParser
+    parser = ArgumentParser(description="Compute distance to ground truth.")
+    parser.add_argument('directories', metavar='DIR', type=str, nargs='+')
+    parser.add_argument('--redist', action="store_true", default=False,
+                        help="Recalculate.")
+    parser.add_argument('--dist', metavar='DIST', type=str, default="l2")
+    parsed_args = parser.parse_args()
+
+    basedirs = parsed_args.directories
     distfun = l2_dist
-    basedirs = sys.argv[1:]
-    if sys.argv[1] == "w1":
+    if parsed_args.dist == "w1":
         from qball.tools.w1dist import w1_dist
         distfun = w1_dist
-        basedirs = sys.argv[2:]
-    elif sys.argv[1] == "kl": # Kullback-Leibler or entropy
+    elif parsed_args.dist == "kl": # Kullback-Leibler or entropy
         distfun = kl_dist
-        basedirs = sys.argv[2:]
-    elif sys.argv[1] == "peak":
+    elif parsed_args.dist == "peak":
         from compute_peaks import peak_dist
         distfun = peak_dist
-        basedirs = sys.argv[2:]
 
     for i,output_dir in enumerate(basedirs):
         print("=> %s" % output_dir)
-        compute_dists(output_dir, distfun, verbose=True)
+        compute_dists(output_dir, distfun, verbose=True, redist=parsed_args.redist)
         if i+1 < len(basedirs):
             print("")
