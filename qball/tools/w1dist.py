@@ -76,7 +76,7 @@ def w1_dist_worker(fmu, mf):
     results = np.zeros(n_image)
     for i in range(n_image):
         fmu_i.value = fmu[:,i]
-        prob.solve()
+        prob.solve(solver="MOSEK")
         results[i] = obj.value
 
     return results

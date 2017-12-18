@@ -29,7 +29,7 @@ class LambdaOptimizer(ParamOptimizer):
             run_exp = True
 
         if run_exp:
-            exp_params = ('lbd=%f' % lbd, self.params[1])
+            exp_params = ['lbd=%f' % lbd, self.params[1]]
             if len(self.params[0]) > 0:
                 exp_params[0] = '%s,%s' % (exp_params[0], self.params[0])
             exp_args = [self.model, '--output', output_dir, '--plot','no']
@@ -54,6 +54,7 @@ class LambdaOptimizer(ParamOptimizer):
             # something went wrong, recompute
             shutil.rmtree(output_dir)
             self.compute(lbd)
+            return
 
         if self.par_key(0.0) not in self.fulldists:
             d = dists_npz['noise_%s' % distname]

@@ -149,14 +149,6 @@ class QBallExperiment(Experiment):
         self.params['fit']['model_params'].update(self.user_params[0])
         self.params['fit']['solver_params'].update(self.user_params[1])
 
-    def load_imagedata(self):
-        Experiment.load_imagedata(self)
-        self.params['base']['assume_normed'] = self.data['normed']
-        gtab = self.data['gtab']
-        b_vecs = gtab.bvecs[gtab.bvals > 0,...]
-        self.data['b_sph'] = load_sphere(vecs=b_vecs.T)
-        self.qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
-
         if "bnd" in self.model_name:
             alpha = self.params['fit']['model_params'].get('conf_lvl', 0.9)
             if 'bounds' not in self.data or self.data['bounds'][0] != alpha:
@@ -165,6 +157,14 @@ class QBallExperiment(Experiment):
                 data_file = os.path.join(self.output_dir, 'data.pickle')
                 pickle.dump(self.data, open(data_file, 'wb'))
             self.params['fit']['model_params']['conf_lvl'] = alpha
+
+    def load_imagedata(self):
+        Experiment.load_imagedata(self)
+        self.params['base']['assume_normed'] = self.data['normed']
+        gtab = self.data['gtab']
+        b_vecs = gtab.bvecs[gtab.bvals > 0,...]
+        self.data['b_sph'] = load_sphere(vecs=b_vecs.T)
+        self.qball_sphere = dipy.core.sphere.Sphere(xyz=b_vecs)
 
     def solve(self):
         if self.model_name == 'n_w_tvw':

@@ -1,5 +1,5 @@
 
-import os, glob, shutil
+import os, glob, shutil, pickle
 import numpy as np
 
 from compute_dists import l2_dist, compute_dists
@@ -43,7 +43,14 @@ class AlphaOptimizer(ParamOptimizer):
             shutil.copytree(self.basedir, output_dir,
                             ignore=shutil.ignore_patterns("*.log","*.zip"))
 
-        exp_params = ('conf_lvl=%f' % (1.0-alpha), self.params[1])
+        data_file = os.path.join(output_dir, 'data.pickle')
+        data = pickle.load(open(data_file, 'rb'))
+        if 'bounds' not in data or data['bounds'][0] != 1.0-alpha:
+            from qball.tools.bounds import compute_hardi_bounds
+            compute_hardi_bounds(data, alpha=1.0-alpha)
+            pickle.dump(data, open(data_file, 'wb'))
+
+        exp_params = ['conf_lvl=%f' % (1.0-alpha), self.params[1]]
         if len(self.params[0]) > 0:
             exp_params[0] = '%s,%s' % (exp_params[0], self.params[0])
         logging.info("=> Optimizing lambda for dist '%s' and basedir '%s'..." % \
