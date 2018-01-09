@@ -1,7 +1,7 @@
 cycler==0.10.0
 dipy==0.13.0
-matplotlib==2.1.0
-nibabel==2.2.0
+matplotlib==2.1.1
+nibabel==2.2.1
 numpy==1.13.3
 pyparsing==2.2.0
 python-dateutil==2.6.1
