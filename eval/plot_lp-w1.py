@@ -8,6 +8,11 @@ from dipy.viz import fvtk
 import dipy.core.sphere
 from dipy.sims.voxel import multi_tensor_odf
 
+try:
+    import qball
+except:
+    import set_qball_path
+
 import qball.util
 from qball.tools.w1dist import w1_dist
 from qball.sphere import load_sphere
@@ -65,6 +70,7 @@ logging.info("Compute/load distances...")
 
 output_dir = "results/plot_lp-w1"
 dists_file = os.path.join(output_dir, "dists.npz")
+dists_csv_file = os.path.join(output_dir, "dists.csv")
 plots_file = os.path.join(output_dir, "lp-w1-result.pdf")
 odfplot_file = os.path.join(output_dir, "lp-w1-data.png")
 qball.util.output_dir_create(output_dir)
@@ -90,6 +96,12 @@ except:
     np.savez(open(dists_file, 'wb'),
         l1d=l1_dists, l2d=l2_dists, w1d=w1_dists,
     )
+
+np.savetxt(dists_csv_file,
+    np.vstack((x, l1_dists, l2_dists, w1_dists)).T,
+    header="angle,l1d,l2d,w1d\n",
+    delimiter=",",
+    comments="")
 
 logging.info("Plot generation...")
 
