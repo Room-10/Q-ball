@@ -30,10 +30,12 @@ Not yet implemented:
 Setup
 -----
 
-You will need VTK 7.x with Python 3.x bindings, llvm-config (included in llvm
-devel packages) and gcc-c++.
+The recommended (and tested) setup is based on Ubuntu 16.04 with CUDA 8.0 or
+newer. In that case, the following lines will do:
 
-    # setting up a virtual environment
+    sudo apt install -y python3 python3-venv python3.5-dev llvm-dev g++
+
+    # set up a virtual environment
     python3 -m venv env
     source ./env/bin/activate
     pip install --upgrade pip
@@ -41,8 +43,17 @@ devel packages) and gcc-c++.
     pip install -r requirements.0.txt
     pip install -r requirements.1.txt
 
-    # include VTK7 from special location
+    # install VTK 7.x with Python 3.x bindings
+    sudo add-apt-repository -y ppa:elvstone/vtk7
+    sudo apt update
+    sudo apt install -y vtk7
     echo "/opt/VTK-7.0.0/lib/python3.5/site-packages" > env/lib/python3.5/site-packages/vtk7.pth
+
+It is possible to run the code without CUDA using the solver parameter
+"use_gpu=False", but CUDA is recommended and enabled by default.
+
+Optionally, parts of the code can be run using PyCVX which will profit a lot
+from using the (commercial) MOSEK solver:
 
     # install mosek (you need a license!)
     pip install git+http://github.com/MOSEK/Mosek.pip
