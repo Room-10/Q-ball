@@ -1,0 +1,3 @@
+#!/bin/bash
+ssh -X localhost -p 2222
+# debug: -vvv

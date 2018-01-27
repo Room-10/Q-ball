@@ -1,0 +1,43 @@
+#!/bin/bash
+PORT=8888
+IP=`LANG=c ifconfig eno1 | grep "inet addr" | awk -F: '{print $2}' | awk '{print $1}'`
+
+SSHPORT=2222
+
+# --user $(id -u)
+
+
+echo "Container ID:"
+
+nvidia-docker run\
+	--name qball-$USER\
+	-d\
+	-p $PORT:8008\
+	-p $SSHPORT:22\
+	-v /home:/home\
+	-v /etc/group:/etc/group:ro\
+	-v /etc/passwd:/etc/passwd:ro\
+	-v /etc/sudoers.d:/etc/sudoers.d:ro\
+	-v /etc/shadow:/etc/shadow:ro\
+	-e PUBLIC_IP=$IP\
+	-e PUBLIC_PORT=$PORT\
+	-e JUPYTER_USER=$USER\
+	qball/base
+
+echo
+
+echo "SSH server:"
+echo "$IP:$SSHPORT"
+
+echo
+echo "Jupyter server:"
+
+#docker logs -f qball-$USER 2>&1 | sed s/0\.0\.0\.0:8008/$IP:$PORT/ q
+#docker logs -f qball-$USER 2>&1 | sed /.\*\(0.0.0.0:8008\).\*/{s//\\1/p\;q}
+docker logs -f qball-$USER 2>&1 | sed -n /0.0.0.0:8008/{s//$IP:$PORT/p\;q}
+#-v /home/`pwd`:/$USER/src\
+#-v /home/$USER/.ssh:/home/$USER/.ssh:ro\
+#-e DISPLAY=$DISPLAY\
+#-e QT_X11_NO_MITSHM=1\
+#-v /tmp/.X11-unix:/tmp/.X11-unix:rw\
+#-v /home/$USER/.Xauthority:/home/$USER/.Xauthority:rw\

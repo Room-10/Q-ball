@@ -1,0 +1,3 @@
+#!/bin/bash
+source /opt/env/bin/activate
+python demo.py cross n_w_tvw

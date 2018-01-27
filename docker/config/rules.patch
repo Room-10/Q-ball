@@ -1,0 +1,10 @@
+--- vtk7-7.0.0/debian/rules	2016-05-25 17:37:17.000000000 +0000
++++ vtk7-7.0.0/debian/rules-new	2018-01-26 21:01:08.398652921 +0000
+@@ -22,6 +22,7 @@
+ 		-DBUILD_TESTING=OFF \
+ 		-DVTK_USE_SYSTEM_LIBRARIES=ON \
+ 		-DVTK_USE_SYSTEM_LIBPROJ4=OFF \
++		-DVTK_RENDERING_BACKEND=OpenGL \
+ 		-DCMAKE_BUILD_TYPE=Release
+ 
+ override_dh_auto_clean:
