@@ -1,4 +1,6 @@
 
+import importlib, pkgutil
+
 import numpy as np
 
 import dipy.core.sphere
@@ -30,7 +32,7 @@ class n_w_tvw_Model(CsaOdfModel):
         data_ext = parse_data(data, self.gtab)
         data = data_ext['raw'][data_ext['slice']]
 
-        from qball.solvers.n_w_tvw.pd import qball_regularization
+        from qball.models.n_w_tvw.pd import qball_regularization
 
         if 'sphere' not in model_params:
             b_vecs = self.gtab.bvecs[self.gtab.bvals > 0,...]
@@ -74,8 +76,7 @@ class sh_w_tvw_Model(CsaOdfModel):
         data_ext = parse_data(data, self.gtab)
         data = data_ext['raw'][data_ext['slice']]
 
-        import importlib
-        module_name = "qball.solvers.sh_w_tvw.%s" % (solver_engine,)
+        module_name = "qball.models.sh_w_tvw.%s" % (solver_engine,)
         module = importlib.import_module(module_name)
         solver_func = getattr(module, 'qball_regularization')
 
@@ -117,8 +118,7 @@ class _SH_HardiQballBaseModel(QballBaseModel):
         self.model_params = model_params
         self.solver_params = solver_params
 
-        import importlib
-        module_name = "qball.solvers.%s.%s" % (self.solver_name, solver_engine)
+        module_name = "qball.models.%s.%s" % (self.solver_name, solver_engine)
         module = importlib.import_module(module_name)
         self.solver_func = getattr(module, 'fit_hardi_qball')
 
@@ -142,16 +142,9 @@ class _SH_HardiQballBaseModel(QballBaseModel):
         sh_coef[..., 0] = self._n0_const
         return sh_coef
 
-sh_hardi_qball_models = [
-    "sh_l_tvw",
-    "sh_l_tvc",
-    "sh_l_tvo",
-    "sh_bndl1_tvc",
-    "sh_bndl2_tvc",
-    "sh_bndl2_tvw",
-]
-
-for m in sh_hardi_qball_models:
+for _, m, ispkg in pkgutil.walk_packages(path=__path__):
+    if not ispkg: continue
     mname = "%s_Model" % m
+    if mname in globals(): continue
     mcls = type(mname, (_SH_HardiQballBaseModel,), { "solver_name": m })
     globals()[mname] = mcls

@@ -56,7 +56,7 @@ Optionally, parts of the code can be run using PyCVX which will profit a lot
 from using the (commercial) MOSEK solver:
 
     # install mosek (you need a license!)
-    pip install git+http://github.com/MOSEK/Mosek.pip
+    pip install git+https://github.com/MOSEK/Mosek.pip
 
 Run
 ---

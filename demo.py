@@ -13,8 +13,8 @@ if __name__ == "__main__":
     exp_names = [name for _,name,_ in pkgutil.iter_modules(pth)]
     logging.info("Available experiments: %s" % ", ".join(exp_names))
 
-    import qball.solvers
-    pth = qball.solvers.__path__
+    import qball.models
+    pth = qball.models.__path__
     model_names = [name for _,name,_ in pkgutil.iter_modules(pth)]
     logging.info("Available models: %s" % ", ".join(model_names))
 

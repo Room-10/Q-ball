@@ -182,11 +182,6 @@ class QBallExperiment(Experiment):
         self.details = self.model.solver_details
 
     def postprocessing(self):
-        l_labels = self.upd.shape[0]
-        imagedims = self.upd.shape[1:]
-        self.upd = self.upd.reshape(l_labels, -1)
-        self.upd = np.array(self.upd.T, order='C').reshape(imagedims + (l_labels,))
-
         if 'csd_response' in self.data \
            and self.data['csd_response'] is not None:
             logging.info("Using CSD for ground truth reconstruction.")
@@ -194,12 +189,17 @@ class QBallExperiment(Experiment):
                 self.data['csd_response'])
         else:
             basemodel = CsaOdfModel(self.data['gtab'], **self.params['base'])
+
         S_data = self.data['raw'][self.data['slice']]
         S_data_orig = self.data['ground-truth'][self.data['slice']]
         f = basemodel.fit(S_data).odf(self.qball_sphere)
         self.fin = np.clip(f, 0, np.max(f, -1)[..., None])
         f = basemodel.fit(S_data_orig).odf(self.qball_sphere)
         self.fin_orig = np.clip(f, 0, np.max(f, -1)[..., None])
+
+        l_labels = S_data.shape[-1]
+        imagedims = S_data.shape[:-1]
+        self.upd = self.upd.reshape(imagedims + (l_labels,))
 
     def prepare_plot_camera(self, slicedims, datalen=1, scale=1.0):
         axes = [0,1,2]
