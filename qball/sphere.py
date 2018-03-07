@@ -66,6 +66,14 @@ class Sphere(object):
             'l_labels': l_labels
         }
 
+        self.v_grad = np.zeros((3, m_gradients), order='C')
+        for j in range(m_gradients):
+            # v : columns correspond to the vertices of triangle j
+            v = self.v[:,self.faces[:,j]]
+            # v0 : centroid of triangle j
+            # taking the mean is a bottle neck here!
+            self.v_grad[:,j] = self.mean(v).ravel()
+
         # b { l_labels }
         # P { m_gradients, r_points }
         # b : vol. elements, s.t. sum(self.b) converges to 4*PI as n to inf
@@ -90,11 +98,10 @@ class Sphere(object):
 
         E = np.eye(r_points) - 1.0/r_points * np.ones((r_points, r_points))
         for j in range(m_gradients):
-            # v : columns correspond to the vertices of the triangle tris[:,j]
+            # v : columns correspond to the vertices of triangle j
             v = self.v[:,self.faces[:,j]]
-            # v0 : centroid of the triangle tris[:,j]
-            # taking the mean is a bottle neck here!
-            v0 = self.mean(v).ravel()
+            # v0 : centroid of triangle j
+            v0 = self.v_grad[:,j]
 
             # D : each column is a tangent vector at v0
             # project the vertices to the tangent space at v0
@@ -146,11 +153,10 @@ class Sphere(object):
 
         E = np.vstack((-np.ones(s_manifold), np.eye(s_manifold))).T
         for j in range(m_gradients):
-            # v : columns correspond to the vertices of the triangle tris[:,j]
+            # v : columns correspond to the vertices of triangle j
             v = self.v[:,self.faces[:,j]]
-            # v0 : centroid of the triangle tris[:,j]
-            # taking the mean is a bottle neck here!
-            v0 = self.mean(v).ravel()
+            # v0 : centroid of triangle j
+            v0 = self.v_grad[:,j]
 
             # D : each row is a tangent vector at v0 pointing to a vertex
             D = np.zeros((3, 3))
