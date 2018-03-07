@@ -43,7 +43,8 @@ class BlockVar(object):
         self._args = args
         for a in args:
             self._append(*a)
-        self.data = np.zeros((self._size(),), order='C')
+        self.size = self._size() # size is fixed after init
+        self.data = np.zeros((self.size,), order='C')
 
     def _append(self, name, dim):
         offset = self._size()
