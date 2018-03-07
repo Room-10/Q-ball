@@ -13,6 +13,7 @@ class MyExperiment(QBallExperiment):
         'sh_l_tvc': { 'step_factor': 0.1, 'step_bound': 0.00135, }, # 0.00105
         'sh_l_tvo': { 'step_factor': 0.29, 'step_bound': 0.0014, }, # 0.00105
         'sh_l_tvw': { 'step_factor': 0.033, 'step_bound': 0.0014, }, # 0.00105
+        'sh_l_tvw2': { 'step_factor': 0.01, 'step_bound': 0.00135, }, # 0.00105
         'sh_bndl1_tvc': { 'step_factor': 0.1, 'step_bound': 0.00139, }, # 0.00105
         'sh_bndl2_tvc': { 'step_factor': 0.1, 'step_bound': 0.00139, }, # 0.00105
         'sh_bndl2_tvw': { 'step_factor': 0.033, 'step_bound': 0.00139, }, # 0.00105

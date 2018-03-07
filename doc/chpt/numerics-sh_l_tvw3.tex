@@ -1,0 +1,81 @@
+
+\subsection{Implementing TV-W1 for HARDI data with SHM dual}
+
+\paragraph{Primal and dual variables}
+$\mat{x} = (u,v,w)$, $\mat{y} = (p,g,q)$.
+
+\paragraph{Saddle point form}
+\begin{align*}
+    \min_{u,v} \max_{p,g} \quad
+        & \frac{1}{2} \langle u - f, u - f \rangle_b + \langle Dv, p \rangle \\
+    \text{s.t.}\quad
+        & \Psi M v^i = u^i ~\forall i,  \\
+        & g^{ij}_t = G^j p^i_t,
+          ~\|g^{ij}\|_{\sigma,\infty} \leq \lambda ~\forall i,j,t.
+\end{align*}
+
+\paragraph{Saddle point form (long version)}
+\begin{align*}
+    \min_{\mat{x}} \max_{\mat{y}} \quad
+        & \frac{1}{2} \langle u - f, u - f \rangle_b
+            + \langle Dv, p \rangle
+            + \sum_{i,j,t} \langle w^{ij}_t, g^{ij}_t - G^j p^i_t \rangle \\
+        &\quad + \sum_{i} \langle q^i, \Psi M v^i - u^i \rangle \\
+    \text{s.t.}\quad
+        & \|g^{ij}\|_{\sigma,\infty} \leq \lambda ~\forall i,j.
+\end{align*}
+
+\paragraph{Primal formulation}
+\begin{align*}
+    \min_{\mat{x}} \quad
+        & \frac{1}{2} \langle u - f, u - f \rangle_b
+            + \lambda \sum_{i,j} \| w^{ij} \|_{\sigma,1} \\
+    \text{s.t.}\quad
+        & \Psi M v^i = u^i ~\forall i, \\
+        & (\partial_t v)_k^i = \sum_j (G^{jT}w^{ij}_t)_{k} ~\forall i,k,t
+\end{align*}
+
+\paragraph{Dual formulation}
+\begin{align*}
+    \max_{\mat{y}} \quad
+        & \sum_{i,k} \frac{b_k}{2} \left [
+                \left(f_k^i\right)^2
+                - \left(b_k^{-1} q^{ik} + f_k^i\right)^2
+            \right ] \\
+    \text{s.t.}\quad
+        & \|g^{ij}\|_{\sigma,\infty} \leq \lambda,
+          ~g^{ij}_t = G^j p^i_t ~\forall i,j,t, \\
+        & (\divergence p^k)^i = M \Psi^T q^i ~\forall i,k.
+\end{align*}
+
+\paragraph{Proximal mappings}
+\begin{align*}
+    G(\mat{x}) &= \frac{1}{2} \langle u-f, u-f \rangle_b, \\
+    F^*(\mat{y}) &=
+        \sum_{i,j} \delta_{\{\|g^{ij}\|_{\sigma,\infty} \leq \lambda\}}, \\
+    K(\mat{x}) &= (
+        Dv - \sum_j G^{jT}w^{j},
+        w,
+        \Psi M v^i - u^i
+    ), \\
+    K^*(\mat{y}) &= (
+        -q,
+        -\divergence{p} + M \Psi^T q^i,
+        g - Gp
+    ),
+\end{align*}
+\begin{align*}
+    \Prox_{\sigma F*}(\bar{\mat{y}})
+    &= (
+        \bar{p},
+        \proj_{\lambda,\infty}(\bar{g}),
+        \bar{q}
+    ), \\
+    \Prox_{\tau G}(\bar{\mat{x}})
+    &= \left(
+        (I+\tau \beta)^{-1}(\bar{u} + \tau \beta f),
+        \bar{v},
+        \bar{w}
+    \right).
+\end{align*}
+
