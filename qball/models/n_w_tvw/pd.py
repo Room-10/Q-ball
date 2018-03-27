@@ -126,3 +126,9 @@ class MyPDHGModel(ModelHARDI):
                 l1norms,                                # lbd*\sum_ji |g[j,i,:,:]|_nuc
                 IndicatorFct(N_q0, c1=e['b_sph'].b_precond), # \delta_{q0 = 1}
             ])
+
+        logging.info("PDHG setup ({l_labels} labels; " \
+                     "img: {imagedims}; lambda={lbd:.3g}) ready.".format(
+                         lbd=c['lbd'],
+                         l_labels=c['l_labels'],
+                         imagedims="x".join(map(str,c['imagedims']))))

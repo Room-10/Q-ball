@@ -9,7 +9,7 @@ def clip_hardi_data(data, delta=1e-5):
     I1 = (data < 0)
     I2 = (0 <= data) & (data < delta)
     I4 = (1-delta <= data) & (data < 1)
-    I5 = (1.0 < data)
+    I5 = (1.0 <= data)
     data[I1] = delta/2
     data[I2] = delta/2 + data[I2]**2/(2*delta)
     data[I4] = (1 - delta/2) - (1 - data[I4])**2/(2*delta)

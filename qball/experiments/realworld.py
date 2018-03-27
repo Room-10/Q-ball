@@ -28,7 +28,7 @@ class MyExperiment(QBallExperiment):
 
     def setup_imagedata(self):
         logging.info("Data setup.")
-        S_data_orig, S_data, gtab, resp = gen.rw_stanford(snr=None)
+        S_data_orig, S_data, gtab = gen.rw_stanford(snr=None)
         self.data = {
             'gtab': gtab,
             'raw': S_data,

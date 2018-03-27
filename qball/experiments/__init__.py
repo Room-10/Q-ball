@@ -197,7 +197,7 @@ class QBallExperiment(Experiment):
         f = basemodel.fit(S_data_orig).odf(self.qball_sphere)
         self.fin_orig = np.clip(f, 0, np.max(f, -1)[..., None])
 
-        l_labels = S_data.shape[-1]
+        l_labels = np.count_nonzero(self.data['gtab'].bvals)
         imagedims = S_data.shape[:-1]
         self.upd = self.upd.reshape(imagedims + (l_labels,))
 
