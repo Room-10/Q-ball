@@ -39,9 +39,10 @@ class n_w_tvw_Model(CsaOdfModel):
             model_params['sphere'] = dipy.core.sphere.Sphere(xyz=b_vecs)
         sphere = model_params['sphere']
 
-        if 'odf' not in model_params:
-            if 'csd_response' in model_params:
-                csd_response = model_params['csd_response']
+        if 'odf' not in data_ext:
+            if 'csd_response' in data_ext \
+               and data_ext['csd_response'] is not None:
+                csd_response = data_ext['csd_response']
                 csd_model = ConstrainedSphericalDeconvModel(self.gtab, csd_response)
                 odf_fit = csd_model.fit(data)
             else:

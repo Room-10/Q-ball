@@ -201,65 +201,17 @@ class QBallExperiment(Experiment):
         imagedims = S_data.shape[:-1]
         self.upd = self.upd.reshape(imagedims + (l_labels,))
 
-    def prepare_plot_camera(self, slicedims, datalen=1, scale=1.0):
-        axes = [0,1,2]
-        long_ax = np.argmax(slicedims)
-        axes.remove(long_ax)
-        stack_ax = axes[0]
-        if slicedims[axes[0]] < slicedims[axes[1]]:
-            stack_ax = axes[1]
-        axes.remove(stack_ax)
-        view_ax = axes[0]
-
-        camera_params = {
-            'position': [0,0,0],
-            'view_up': [0,0,0]
-        }
-        camera_params['view_up'][max(long_ax,stack_ax)] = 1
-        dist = 2*scale*max(slicedims[long_ax],datalen*(slicedims[stack_ax]+1)-1)
-        camera_params['position'][view_ax] = -dist if view_ax == 1 else dist
-
-        return camera_params, long_ax, view_ax, stack_ax
-
-    def prepare_plot(self, data, p_slice=None):
-        p = self.params['plot']
-        p_slice = p['slice'] if p_slice is None else p_slice
-        data = (data,) if type(data) is np.ndarray else data
-
-        slicedims = data[0][p_slice].shape[:-1]
-        l_labels = data[0].shape[-1]
-
-        camera_params, long_ax, view_ax, stack_ax = \
-            self.prepare_plot_camera(slicedims, datalen=len(data), scale=p['scale'])
-
-        stack = [u[p_slice] for u in data]
-        if p['spacing']:
-            uniform_odf = np.ones((1,1,1,l_labels), order='C')/(4*np.pi)
-            tile_descr = [1,1,1,1]
-            tile_descr[long_ax] = slicedims[long_ax]
-            spacing = np.tile(uniform_odf, tile_descr)
-            for i in reversed(range(1,len(stack))):
-                stack.insert(i, spacing)
-        if stack_ax == max(long_ax,stack_ax):
-            stack = list(reversed(stack))
-
-        plotdata = np.concatenate(stack, axis=stack_ax)
-        r = fvtk.ren()
-        r_data = fvtk.sphere_funcs(plotdata, self.qball_sphere, colormap='jet',
-                                   norm=p['norm'], scale=p['scale'])
-        fvtk.add(r, r_data)
-        r.set_camera(**camera_params)
-        return r
-
     def plot(self):
         if self.plot_mode == "no":
             return
 
         p = self.params['plot']
 
+        from qball.tools.plot import plot_as_odf, prepare_odfplot
         if self.plot_mode == "show":
             logging.info("Plotting results...")
-            r = self.prepare_plot([self.fin_orig, self.fin, self.upd])
+            data = [self.fin_orig, self.fin, self.upd]
+            r = prepare_odfplot(data, p, self.qball_sphere)
             fvtk.show(r, size=(1024, 768))
 
         logging.info("Recording plot...")
@@ -269,34 +221,10 @@ class QBallExperiment(Experiment):
             (self.fin, "fin"),
             (self.fin_orig, "fin_orig")
         ]
-        for img, name in imgdata:
-            for i,s in enumerate(p['records']):
-                fname = os.path.join(self.output_dir, "plot-%s-%d.png" % (name,i))
-                r = self.prepare_plot(img, p_slice=s)
-                fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname=fname)
+        plot_as_odf(imgdata, p, self.qball_sphere, self.output_dir)
 
     def plot_dti(self):
-        p = self.params['plot']
-
-        logging.info("Fitting data to DTI model...")
-        import dipy.reconst.dti as dti
-        tenmodel = dti.TensorModel(self.gtab)
-        tenfit = tenmodel.fit(self.S_data[p['slice']])
-
-        from dipy.reconst.dti import fractional_anisotropy, color_fa, lower_triangular
-        FA = fractional_anisotropy(tenfit.evals)
-        FA = np.clip(FA, 0, 1)
-        RGB = color_fa(FA, tenfit.evecs)
-        cfa = RGB
-        cfa /= cfa.max()
-
-        logging.info("Recording DTI plot...")
-        from dipy.viz import fvtk
-        camera_params, long_ax, view_ax, stack_ax = \
-            self.prepare_plot_camera(self.S_data[p['slice']].shape[:-1], scale=2.2)
-        r = fvtk.ren()
-        fvtk.add(r, fvtk.tensor(tenfit.evals, tenfit.evecs, cfa, self.qball_sphere))
-        r.set_camera(**camera_params)
-        fname = os.path.join(self.output_dir, "plot-dti-0.png")
-        fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname=fname)
+        from qball.tools.plot import plot_as_dti
+        plot_as_dti(self.data['gtab'], self.data['raw'][self.data['slice']],
+                    self.params['plot'], self.qball_sphere, self.output_dir)
 
