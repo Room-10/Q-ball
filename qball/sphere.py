@@ -127,24 +127,28 @@ class Sphere(object):
             but it's supposed to give better sublabel-accuracy.
 
         Testing code:
-            n = 2
-            mf = Sphere(n)
-            phi, psi = 18, 33
-            f_raw = np.asarray([np.sin(phi*np.pi/180.0), np.cos(phi*np.pi/180.0), 0])
-            u_raw = np.asarray([np.sin(psi*np.pi/180.0), np.cos(psi*np.pi/180.0), 0])
-            f = np.zeros((mf.mdims['l_labels'], 1), order='C')
-            u = f.copy()
-            f[:,0] = mf.embed_barycentric(f_raw)
-            u[:,0] = mf.embed_barycentric(u_raw)
-            normalize_odf(f, mf.b)
-            normalize_odf(u, mf.b)
-            w1d_1 = w1_dist(f, u, mf)[0]
-            mf.setup_barycentric_grad()
-            w1d_2 = w1_dist(f, u, mf)[0]
-            mfd = mf.dist(f_raw, u_raw)
-            print("mf.dist: {}\nw1_dist_taylor: {}\nw1_dist_barycentric: {}".format(
-                180*mfd/np.pi, 180*w1d_1/np.pi, 180*w1d_2/np.pi
-            ))
+        >>> import numpy as np
+        >>> from qball.sphere import Sphere
+        >>> from qball.tools.w1dist import w1_dist
+        >>> from qball.tools import normalize_odf
+        >>> n = 2
+        >>> mf = Sphere(n)
+        >>> phi, psi = 18, 33
+        >>> f_raw = np.asarray([np.sin(phi*np.pi/180.0), np.cos(phi*np.pi/180.0), 0])
+        >>> u_raw = np.asarray([np.sin(psi*np.pi/180.0), np.cos(psi*np.pi/180.0), 0])
+        >>> f = np.zeros((mf.mdims['l_labels'], 1), order='C')
+        >>> u = f.copy()
+        >>> f[:,0] = mf.embed_barycentric(f_raw)
+        >>> u[:,0] = mf.embed_barycentric(u_raw)
+        >>> normalize_odf(f, mf.b)
+        >>> normalize_odf(u, mf.b)
+        >>> w1d_1 = w1_dist(f, u, mf)[0]
+        >>> mf.setup_barycentric_grad()
+        >>> w1d_2 = w1_dist(f, u, mf)[0]
+        >>> mfd = mf.dist(f_raw, u_raw)
+        >>> print("mf.dist: {}\nw1_dist_taylor: {}\nw1_dist_barycentric: {}".format(
+        >>>     180*mfd/np.pi, 180*w1d_1/np.pi, 180*w1d_2/np.pi
+        >>> ))
         """
         s_manifold = self.mdims['s_manifold']
         m_gradients = self.mdims['m_gradients']
@@ -243,7 +247,7 @@ class Sphere(object):
         assert np.abs(coords[2]) < 1.e-11
         assert coords[0] >= 0 and coords[1] >= 0 and coords[0] + coords[1] <= 1.0
 
-        coords = np.array([(1 - coords[0] - coords[1], coords[0], coords[1])])
+        coords = np.array([1 - coords[0] - coords[1], coords[0], coords[1]])
         weights = np.zeros((self.mdims['l_labels'],), order='C')
         weights[target_triangle] = coords.T
         return weights
