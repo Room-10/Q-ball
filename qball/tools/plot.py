@@ -1,6 +1,7 @@
 
 import os, logging
 import numpy as np
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 
 from dipy.viz import fvtk
 
@@ -81,3 +82,58 @@ def prepare_plot_camera(slicedims, datalen=1, scale=1.0):
     camera_params['position'][view_ax] = -dist if view_ax == 1 else dist
 
     return camera_params, long_ax, view_ax, stack_ax
+
+def matrix2brl(arr):
+    """Converts a binary matrix to unicode braille points"""
+    # counting order of braille points
+    brls = 2**np.array([[0,3],
+                        [1,4],
+                        [2,5],
+                        [6,7]])
+    brl, W, H = "", 2, 4
+    padded = np.pad(arr, ((0,H-arr.shape[0]%H),(0,W-arr.shape[1]%W)), 'constant')
+    for i in range(0, padded.shape[0], H):
+        for j in range(0, padded.shape[1], W):
+            brl += chr(10240+int(np.sum(padded[i:i+H,j:j+W]*brls)))
+        brl += "\n"
+    return brl.strip("\n")
+
+def plot_mesh3(ax, vecs, tris):
+    """ Plots a surface according to a given triangulation.
+
+    Args:
+        ax : Instance of mpl_toolkits.mplot3d.Axes3d
+        vecs : numpy array of shape (3, l_vecs) containing the grid points of the
+               surface
+        tris : numpy array of shape (3, l_vecs). Each column contains the three
+               indices (wrt. `vecs`) of a triangle's vertices.
+
+    Test code:
+    >>> import matplotlib.pyplot as plt
+    >>> fig = plt.figure(facecolor="white")
+    >>> fig.subplots_adjust(left=0, right=1, top=1, bottom=0.1)
+    >>> ax = fig.add_subplot(1, 1, 1, projection='3d')
+    >>> ax.set_xlim((-1.1,1.1))
+    >>> ax.set_ylim((-1.1,1.1))
+    >>> ax.set_zlim((-1.1,1.1))
+    >>> ax.view_init(azim=30)
+    >>> ax.scatter(1.01*sv.points[:,0], 1.01*sv.points[:,1], 1.01*sv.points[:,2])
+    >>> plot_mesh3(ax, sv.points.T, sv._tri.simplices.T)
+    >>> plt.show()
+    """
+    vx = vecs[0]
+    vy = vecs[1]
+    vz = vecs[2]
+
+    tmp = np.tile(tris, (2,1))
+
+    verts = np.dstack((vx[tmp].T, vy[tmp].T, vz[tmp].T))
+    collection = Poly3DCollection(verts, linewidths=0.3, alpha=0.8)
+    collection.set_facecolor([1,1,1])
+    collection.set_edgecolor([0.5,0.5,0.5])
+    ax.add_collection3d(collection)
+    #ax.add_collection3d(
+    #    Line3DCollection(verts, colors='k', linewidths=0.2, linestyle=':')
+    #)
+    #for k in range(vecs.shape[1]):
+    #    ax.text(1.1*vecs[0,k], 1.1*vecs[1,k], 1.1*vecs[2,k], str(k))

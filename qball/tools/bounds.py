@@ -14,7 +14,8 @@ from scipy.special import i0
 from functools import partial
 from multiprocessing import Pool
 
-from qball.tools import matrix2brl, clip_hardi_data
+from qball.tools import clip_hardi_data
+from qball.tools.plot import matrix2brl
 
 def logi0_large(x):
     return x - 0.5*np.log(2*np.pi*x)

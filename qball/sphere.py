@@ -1,7 +1,7 @@
 
 from __future__ import division
 
-from qball.tools import plot_mesh3
+from qball.tools.plot import plot_mesh3
 from qball.tools.norm import normalize
 from qball.tools.mean import manifold_mean
 from qball.util import output_dir_create
@@ -243,7 +243,7 @@ class Sphere(object):
         expmap_sphere_inv(xn, np.vstack((p1, p2, p3)), tvecs)
         v1 = tvecs[1] - tvecs[0]
         v2 = tvecs[2] - tvecs[0]
-        coords = np.linalg.inv(np.vstack((v1, v2, xn)).T).dot(-tvecs[0])
+        coords = np.linalg.solve(np.vstack((v1, v2, xn)).T, -tvecs[0])
         assert np.abs(coords[2]) < 1.e-11
         assert coords[0] >= 0 and coords[1] >= 0 and coords[0] + coords[1] <= 1.0
 
@@ -356,15 +356,9 @@ def trisphere(n):
         tris : numpy array, each column defines a triangle on the sphere
                through indices into `verts`
     """
-    """
-    # How are these chosen? This is not a regular icosahedron!
-    # X**2 + Z**2 == 0.9999999999999998 (!= 1.0)
-    X = 0.525731112119133606
-    Z = 0.850650808352039932
-    """
-    # Alternative choice for regular icosahedron:
-    # X : inverse golden ratio
-    X = (5**0.5 - 1)/2
+    # Regular icosahedron:
+    # (X, Z) : solution to X/Z = Z/(X + Z) and 1 = X^2 + Z^2
+    X = ((5 - 5**0.5)/10)**0.5
     Z = (1 - X**2)**0.5
 
     # verts { 3, 12 }
