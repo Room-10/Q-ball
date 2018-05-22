@@ -96,43 +96,40 @@ class Sphere(object):
         r_points = self.mdims['r_points']
         l_labels = self.mdims['l_labels']
 
-        E = np.eye(r_points) - 1.0/r_points * np.ones((r_points, r_points))
+        D = np.eye(r_points) - 1.0/r_points * np.ones((r_points, r_points))
         for j in range(m_gradients):
             # v : columns correspond to the vertices of triangle j
             v = self.v[:,self.faces[:,j]]
             # v0 : centroid of triangle j
             v0 = self.v_grad[:,j]
 
-            # D : each column is a tangent vector at v0
-            # project the vertices to the tangent space at v0
-            D = v.T - v0
-            D -= np.einsum('i,j->ij', np.einsum('ij,j->i', D, v0), v0)
-            D = normalize(D.T)
-            for k in range(D.shape[1]):
-                D[:,k] *= self.dist(v[:,k], v0)
+            # E : each row is a tangent vector at v0 pointing to a vertex
+            E = np.zeros((3, 3))
+            self.log(v0, v.T, E)
 
             # C : basis of tangent space at v0, orthonormal wrt. euclidean metric
-            c1 = normalize(D[:,0]).ravel()
-            c2 = normalize(D[:,1] - D[:,1].dot(c1) * c1).ravel()
+            c1 = normalize(E[0,:]).ravel()
+            c2 = normalize(E[1,:] - E[1,:].dot(c1) * c1).ravel()
             C = np.vstack((c1, c2)).T
 
             # M { r_points, s_manifold }
-            M = D.T.dot(C)
+            M = E.dot(C)
 
-            self.A[j] = M.T.dot(E).dot(M)
-            self.B[j] = M.T.dot(E)
+            self.A[j] = M.T.dot(D).dot(M)
+            self.B[j] = M.T.dot(D)
 
     def setup_barycentric_grad(self):
-        """ This alternative gradient computation is almost identical,
-            but it's supposed to give better sublabel-accuracy.
+        """ This alternative gradient computation is based on a barycentrically
+            linear interpolation. It has been implemented in the hope to give
+            better sublabel-accuracy (which it doesn't).
 
-        Testing code:
+        Test code:
         >>> import numpy as np
-        >>> from qball.sphere import Sphere
+        >>> from qball.sphere import load_sphere
         >>> from qball.tools.w1dist import w1_dist
         >>> from qball.tools import normalize_odf
         >>> n = 2
-        >>> mf = Sphere(n)
+        >>> mf = load_sphere(refinement=n)
         >>> phi, psi = 18, 33
         >>> f_raw = np.asarray([np.sin(phi*np.pi/180.0), np.cos(phi*np.pi/180.0), 0])
         >>> u_raw = np.asarray([np.sin(psi*np.pi/180.0), np.cos(psi*np.pi/180.0), 0])
@@ -155,101 +152,82 @@ class Sphere(object):
         r_points = self.mdims['r_points']
         l_labels = self.mdims['l_labels']
 
-        E = np.vstack((-np.ones(s_manifold), np.eye(s_manifold))).T
         for j in range(m_gradients):
-            # v : columns correspond to the vertices of triangle j
-            v = self.v[:,self.faces[:,j]]
+            # tri : columns correspond to the vertices of triangle j
+            tri = self.v[:,self.faces[:,j]]
             # v0 : centroid of triangle j
             v0 = self.v_grad[:,j]
 
-            # D : each row is a tangent vector at v0 pointing to a vertex
-            D = np.zeros((3, 3))
-            expmap_sphere_inv(v0, v.T, D)
-
-            # scal : scalar products <v0, v_i>
-            scal = np.einsum('ji,j->i', v, v0)
-
-            # R : d(v0, v_i)
-            R = np.arccos(scal)
-
-            # dnR : normal derivatives of the functions v -> d(v,v_i) at v=v0
-            dnR = scal/np.sqrt(1 - scal*scal)
-
-            # N : each row is a unit tangent vector at v0 pointing to a vertex
-            N = normalize(D.T).T
-
-            # A : matrix for computing barycentric coordinates of v0
-            A = np.linalg.inv(np.vstack((D[1] - D[0], D[2] - D[0], v0)).T)[0:-1,:]
-
-            # alph : barycentric coordinates
-            alph = np.hstack((0, A.dot(-D[0])))
-            alph[0] = 1-sum(alph[1:])
-
-            # Nii : the tensor products N[i]xN[i]
-            Nii = [np.einsum('j,k->jk', N[i], N[i]) for i in range(r_points)]
-
-            # HR : the Hessians of the functions v -> -0.5 * d(v,v_i)^2
-            HR = [-Nii[i] + R[i]*dnR[i]*(Nii[i] - np.eye(3)) for i in range(r_points)]
-
-            # Dalph: derivative of barycentric coordinate function
-            Dalph = A.dot(sum([alph[k]*HR[k] for k in range(s_manifold+1)]))
-
-            # C : orthonormal basis transformation for tangent space at v0
-            c1 = normalize(D[0]).ravel()
-            c2 = normalize(D[1] - D[1].dot(c1) * c1).ravel()
-            C = np.linalg.inv(np.vstack((c1, c2, v0)).T)[0:-1,:]
-
             self.A[j] = np.eye(s_manifold)
-            self.B[j] = C.dot(Dalph.T).dot(E)
+            self.B[j] = barylinear_prep_grad(self, tri, v0)
 
-    def interpolate(self, f, x):
-        return np.einsum('ji,i->j', f, self.embed_barycentric(x))
+    def get_tangential_basis(self, x):
+        """ Return ONB of tangent space at `x` """
+        i = np.argmax(np.abs(x))
+        j = (i+1)%3
+        c1 = x.copy()
+        c1[i],c1[j] = c1[j],-c1[i]
+        return np.vstack((c1,np.cross(x,c1)))
+
+    def interpolate(self, f, x, grad=False):
+        _, tri = self.get_triangle(x)
+        return barylinear_interp(self, tri, f, x, grad=grad)
+
+    def get_triangle(self, x):
+        """ Determine the triangle in the Sphere's triangulation that contains
+            the given point x
+
+        Args:
+            x : the vector to be embedded, numpy array of shape (3,)
+
+        Returns:
+            labels : numpy array of shape (3,), containing references
+                to the labels in self.faces
+            tri : numpy array of shape (3, 3), self.faces[:,labels]
+        """
+        target_triangle = None
+        for tri in self.faces.T:
+            p1 = self.v[:,tri[0]]
+            p2 = self.v[:,tri[1]]
+            p3 = self.v[:,tri[2]]
+            if tri_contains(x, p1, p2, p3):
+                target_triangle = tri.copy()
+                break
+        return target_triangle, np.vstack((p1, p2, p3)).T
 
     def embed_barycentric(self, x):
         """ Embed a 3D vector into the triangulation using barycentric coordinates.
 
         Args:
             x : the vector to be embedded, numpy array of shape (3,)
+
         Returns:
             numpy array of shape (l_labels,)
 
         Test code:
-            n = 2
-            mf = Sphere(n)
-            for theta, phi in zip([23,42,76,155,143,103], [345,220,174,20,18,87]):
-                f_in = np.asarray([
-                    np.sin(theta*np.pi/180.0)*np.cos(phi*np.pi/180.0),
-                    np.sin(theta*np.pi/180.0)*np.sin(phi*np.pi/180.0),
-                    np.cos(theta*np.pi/180.0)
-                ])
-                f_out = mf.mean(mf.v, mf.embed_barycentric(f_in)[:,np.newaxis]).ravel()
-                err = np.sqrt(sum((f_in-f_out)**2))
-                print("theta: {}, phi: {}, err: {}".format(theta, phi, err))
-                assert err <= 1e-15
+        >>> import numpy as np
+        >>> from qball.sphere import load_sphere
+        >>> n = 2
+        >>> mf = load_sphere(refinement=n)
+        >>> for theta, phi in zip([23,42,76,155,143,103], [345,220,174,20,18,87]):
+        >>>     f_in = np.asarray([
+        >>>         np.sin(theta*np.pi/180.0)*np.cos(phi*np.pi/180.0),
+        >>>         np.sin(theta*np.pi/180.0)*np.sin(phi*np.pi/180.0),
+        >>>         np.cos(theta*np.pi/180.0)
+        >>>     ])
+        >>>     f_out = mf.mean(mf.v, mf.embed_barycentric(f_in)[:,None]).ravel()
+        >>>     err = np.sqrt(sum((f_in-f_out)**2))
+        >>>     print("theta: {}, phi: {}, err: {}".format(theta, phi, err))
+        >>>     assert err <= 1e-15
         """
 
         xn = normalize(x)[:,0]
-        target_triangle = None
-        for tri in self.faces.T:
-            p1 = self.v[:,tri[0]]
-            p2 = self.v[:,tri[1]]
-            p3 = self.v[:,tri[2]]
-            if tri_contains(xn, p1, p2, p3):
-                target_triangle = tri.copy()
-                break
-        assert target_triangle is not None
+        labels, tri = self.get_triangle(xn)
+        assert labels is not None
 
-        tvecs = np.zeros((3, 3))
-        expmap_sphere_inv(xn, np.vstack((p1, p2, p3)), tvecs)
-        v1 = tvecs[1] - tvecs[0]
-        v2 = tvecs[2] - tvecs[0]
-        coords = np.linalg.solve(np.vstack((v1, v2, xn)).T, -tvecs[0])
-        assert np.abs(coords[2]) < 1.e-11
-        assert coords[0] >= 0 and coords[1] >= 0 and coords[0] + coords[1] <= 1.0
-
-        coords = np.array([1 - coords[0] - coords[1], coords[0], coords[1]])
+        _, _, _, alph = barylinear_prep(self, tri, xn)
         weights = np.zeros((self.mdims['l_labels'],), order='C')
-        weights[target_triangle] = coords.T
+        weights[labels] = alph
         return weights
 
     def embed(self, x):
@@ -263,12 +241,12 @@ class Sphere(object):
             ax : Instance of mpl_toolkits.mplot3d.Axes3d
 
         Test code:
-            import matplotlib.pyplot as plt
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-            from qball.sphere import load_sphere
-            load_sphere(refinement=2).plot(ax)
-            plt.show()
+        >>> import matplotlib.pyplot as plt
+        >>> fig = plt.figure()
+        >>> ax = fig.add_subplot(111, projection='3d')
+        >>> from qball.sphere import load_sphere
+        >>> load_sphere(refinement=2).plot(ax)
+        >>> plt.show()
         """
         plot_mesh3(ax, self.v, self.P.T)
 
@@ -295,37 +273,40 @@ class Sphere(object):
             weights = np.ones((vecs.shape[1], 1), dtype=np.float64) / vecs.shape[1]
 
         expmap_sphere = {
-            'map': expmap_sphere_map,
-            'inv': expmap_sphere_inv
+            'map': self.exp,
+            'inv': self.log
         }
         return manifold_mean(expmap_sphere, vecs.T, weights.T).T
 
-def expmap_sphere_inv(location, pfrom, vto):
-    """ exp_l^{-1}(p) = d(l,p) * (p - <p,l>l)/|p - <p,l>l|
-    and we use |p - <p,l>l| = sqrt(1 - <p,l>^2) (by |p|=|l|=1)
-    as well as d(l,p) = arccos(<p,l>)
-    """
-    # yxi : <p,l>
-    # clamp to avoid problems with arccos
-    # (should not lie outside due to normalization)
-    yxi = np.clip(np.einsum('ij,j->i', pfrom, location), -1.0, 1.0)
+    def log(self, location, pfrom, vto):
+        """ exp_l^{-1}(p) = d(l,p) * (p - <p,l>l)/|p - <p,l>l|
+        and we use |p - <p,l>l| = sqrt(1 - <p,l>^2) (by |p|=|l|=1)
+        as well as d(l,p) = arccos(<p,l>)
+        """
+        assert pfrom.shape[1] == location.size
+        assert vto.shape[1] == location.size
+        assert pfrom.shape[0] == vto.shape[0]
+        # yxi : <p,l>
+        # clamp to avoid problems with arccos
+        # (should not lie outside due to normalization)
+        yxi = np.clip(np.einsum('ij,j->i', pfrom, location), -1.0, 1.0)
 
-    # skip opposite points, this causes numerical problems
-    ind = yxi >= -1.0 + 16*np.spacing(1)
-    vto[np.logical_not(ind)] = 0.0
-    # factor : d(l,p)/|p - <p,l>l| = arccos(<p,l>)/sqrt(1 - <p,l>^2)
-    factor = np.arccos(yxi[ind])/np.fmax(np.spacing(1),np.sqrt(1 - yxi[ind]**2))
-    # vto : factor * (p - <p,l>l)
-    vto[ind,:] = np.einsum('i,ij->ij', factor,
-        pfrom[ind,:] - np.einsum('i,j->ij', yxi[ind], location)
-    )
+        # skip opposite points, this causes numerical problems
+        ind = yxi >= -1.0 + 16*np.spacing(1)
+        vto[np.logical_not(ind)] = 0.0
+        # factor : d(l,p)/|p - <p,l>l| = arccos(<p,l>)/sqrt(1 - <p,l>^2)
+        factor = np.arccos(yxi[ind])/np.fmax(np.spacing(1),np.sqrt(1 - yxi[ind]**2))
+        # vto : factor * (p - <p,l>l)
+        vto[ind,:] = np.einsum('i,ij->ij', factor,
+            pfrom[ind,:] - np.einsum('i,j->ij', yxi[ind], location)
+        )
 
-def expmap_sphere_map(location, vfrom):
-    """ exp_l(v) = cos(|v|) * l  + sin(|v|) * v/|v| """
-    c = np.sqrt(np.einsum('i,i->', vfrom, vfrom))
-    pto = np.cos(c)*location + np.sin(c)/max(np.spacing(1),c)*vfrom
-    # normalizing prevents errors from accumulating
-    return normalize(pto).reshape(-1)
+    def exp(self, location, vfrom):
+        """ exp_l(v) = cos(|v|) * l  + sin(|v|) * v/|v| """
+        c = np.sqrt(np.einsum('i,i->', vfrom, vfrom))
+        pto = np.cos(c)*location + np.sin(c)/max(np.spacing(1),c)*vfrom
+        # normalizing prevents errors from accumulating
+        return normalize(pto).reshape(-1)
 
 def tri_contains(x, p1, p2, p3):
     v1 = p2 - p1
@@ -350,6 +331,7 @@ def trisphere(n):
 
     Args:
         n : grade of refinement; n=0 means 12 vertices (icosahedron).
+
     Returns:
         tuple (verts, tris)
         verts : numpy array, each column corresponds to a point on the sphere
@@ -540,3 +522,143 @@ def spherical_tri_area(tri):
     b = 2.0*np.arctan(k/sin_s_b)
     c = 2.0*np.arctan(k/sin_s_c)
     return a + b + c - np.pi
+
+def barylinear_prep(sph, tri, x):
+    """ Helper function for the calculation of barylinear interpolations in tri
+        at x on the sphere sph
+
+    Args:
+        sph : instance of qball.sphere.Sphere
+        tri : array of shape (3, 3), columns correspond to vertices v_i
+        x : point at which the interpolation is to be evaluated
+
+    Returns:
+        N : array of shape (3, 3), each row is a unit tangent vector at x
+            pointing to a vertex of tri
+        C : array of shape (2, 3), orthonormal basis for tangent space at x
+        A : array of shape (2, 2), matrix for computing barycentric coordinates
+            of x; expressed in the basis C
+        alph : array of shape (3,), barycentric coordinates of x
+    """
+    s_manifold = 2
+    r_points = 3
+
+    # E : each row is a tangent vector at x pointing to a vertex of tri
+    E = np.zeros((3, 3))
+    sph.log(x, tri.T, E)
+    N = normalize(E.T).T
+
+    c2 = normalize(N[1] - N[1].dot(N[0]) * N[0]).ravel()
+    C = np.vstack((N[0], c2))
+
+    # transform tangent vectors to basis C
+    N = N.dot(C.T)
+    E = E.dot(C.T)
+
+    A = np.vstack((E[1] - E[0], E[2] - E[0])).T
+    alph = np.hstack((0, np.linalg.solve(A, -E[0])))
+    alph[0] = 1-sum(alph[1:])
+
+    return N, C, A, alph
+
+def barylinear_prep_grad(sph, tri, x, prep=None):
+    """ Helper function for the gradient calculation of barylinear
+        interpolations in tri at x on the sphere sph
+
+    Args:
+        sph : instance of qball.sphere.Sphere
+        tri : array of shape (3, 3), columns correspond to vertices v_i
+        x : point at which the interpolation is to be evaluated
+        prep : (optional) output of `barylinear_prep(sph, tri, x)`
+
+    Returns:
+        array of shape (2, 3), matrix multiplication with a data vector f
+        yields the gradient in terms of an (internal) ONB of the tangent space
+        at x
+    """
+    if prep is None:
+        prep = barylinear_prep(sph, tri, x)
+
+    s_manifold = 2
+    r_points = 3
+    N, C, A, alph = prep
+
+    D = np.vstack((-np.ones(s_manifold), np.eye(s_manifold))).T
+
+    # scal : scalar products <x, v_i> where v_i are vertices of tri
+    scal = np.einsum('ji,j->i', tri, x)
+
+    # R : d(x, v_i)
+    R = np.arccos(scal)
+
+    # dnR : normal derivatives of the functions v -> d(v,v_i) at v=x
+    dnR = scal/np.sqrt(1 - scal**2)
+
+    # Nii : the tensor products N[i]xN[i]
+    Nii = [np.kron(N[i], N[i][:,None]) for i in range(r_points)]
+
+    # HR : the Hessians of the functions v -> -0.5 * d(v,v_i)^2
+    HR = [-Nii[i] - R[i]*dnR[i]*(np.eye(s_manifold) - Nii[i]) for i in range(r_points)]
+
+    # Dalph : derivative of barycentric coordinate function
+    Dalph = -np.linalg.inv(A).dot(sum([alph[i]*HR[i] for i in range(r_points)]))
+
+    return Dalph.T.dot(D)
+
+def barylinear_interp(sph, tri, f, x, grad=False):
+    """ Compute value and (optionally) gradient at x of f's barylinear
+        interpolation in tri on the sphere sph
+
+    Args:
+        sph : instance of qball.sphere.Sphere
+        tri : array of shape (3, 3), columns correspond to vertices v_i
+        f : array of shape (3,), function values f(v_i)
+        x : point at which the interpolation is to be evaluated
+        grad : if True, gradient is returned as a second output
+
+    Returns:
+        val : value of the interpolation at x
+        g : (optional) array of shape (3,), gradient at x
+
+    Test Code:
+    >>> import numpy as np
+    >>> from qball.sphere import load_sphere, barylinear_interp, check_derivative_mf
+    >>> from qball.tools.norm import normalize
+    >>> n = 0
+    >>> sph = load_sphere(refinement=n)
+    >>> tri = np.eye(3)
+    >>> f = np.array([0, 0, 0.5*np.pi])
+    >>> x0 = normalize(np.array([[10,10,1]]).T).ravel()
+    >>> fun = lambda x, grad=False: barylinear_interp(sph, tri, f, x, grad=grad)
+    >>> check_derivative_mf(fun, sph, x0)
+    """
+    prep = barylinear_prep(sph, tri, x)
+    N, C, A, alph = prep
+    val = f.dot(alph)
+    if not grad:
+        return val
+    else:
+        D = barylinear_prep_grad(sph, tri, x, prep)
+        return val, C.T.dot(D).dot(f)
+
+def check_derivative_mf(fun, mf, x):
+    """ Check gradient of `fun` on `mf` at point `x`. """
+    s_manifold = mf.mdims['s_manifold']
+    fx, gradfx = fun(x, grad=True)
+    C = mf.get_tangential_basis(x)
+    exp_x_v = 0*x
+    m0 = 1
+    N = 8
+    print(' m:  h        |f(x+hv)-T|    |...|/h^2')
+    print('----------------------------------------')
+    for m in range(m0,m0+N):
+        h = 10**(-m)
+        err = 0
+        for i in range(20):
+            ve = np.random.randn(s_manifold)
+            ve /= np.sqrt(np.sum(ve**2))
+            v = C.T.dot(h*ve)
+            exp_x_v[:] = mf.exp(x, v)
+            taylor = fx + np.einsum('i,i->', gradfx, v)
+            err = max(err, np.abs(fun(exp_x_v) - taylor))
+        print('%02d: % 7.1e % 10.5e   % 10.5e' % (m, h, err, err/h**2))
