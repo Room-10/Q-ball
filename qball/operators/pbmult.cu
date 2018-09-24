@@ -1,5 +1,5 @@
 
-__global__ void pbmult(double *x, double *y)
+__global__ void pbmult(TYPE_T *x, TYPE_T *y)
 {
     /* y^i -= sum_j P^j' B^j' x^ij */
 
@@ -11,7 +11,7 @@ __global__ void pbmult(double *x, double *y)
 
     // iteration variables and misc.
     int jj, ll, mm, idx;
-    double newval;
+    TYPE_T newval;
 
     for (jj = 0; jj < J; jj++) {
         for (ll = 0; ll < L; ll++) {
@@ -25,7 +25,7 @@ __global__ void pbmult(double *x, double *y)
     }
 }
 
-__global__ void bpmult(double *x, double *y)
+__global__ void bpmult(TYPE_T *x, TYPE_T *y)
 {
     /* y^ij -= B^j P^j x^i */
 
@@ -39,7 +39,7 @@ __global__ void bpmult(double *x, double *y)
 
     // iteration variables and misc.
     int idx = j*(N*M) + i*M + m;
-    double newval = y[idx];
+    TYPE_T newval = y[idx];
 
     for (int ll = 0; ll < L; ll++) {
         newval -= B[j*(L*M) + m*L + ll]*x[i*K + P[j*L + ll]];

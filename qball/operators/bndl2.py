@@ -89,17 +89,18 @@ class ProxBndSSD(Operator):
         self.alpha = alpha
         self.tau = tau
 
-    def prepare_gpu(self):
+    def prepare_gpu(self, type_t="double"):
+        np_dtype = np.float64 if type_t == "double" else np.float32
         taufact = "tau[i]*" if type(self.tau) is np.ndarray else "tau[0]*"
         self.gpuvars = {
             'f1':       gpuarray.to_gpu(self.f1),
             'f2':       gpuarray.to_gpu(self.f2),
             'alpha':    gpuarray.to_gpu(self.alpha),
-            'tau':      gpuarray.to_gpu(np.asarray(self.tau, dtype=np.float64))
+            'tau':      gpuarray.to_gpu(np.asarray(self.tau, dtype=np_dtype))
         }
-        headstr  = "double *x, double *y, "
-        headstr += "double *f1, double *f2, double *alpha, double *tau"
-        self._kernel = ElementwiseKernel(headstr,
+        headstr  = "{0} *x, {0} *y, "
+        headstr += "{0} *f1, {0} *f2, {0} *alpha, {0} *tau"
+        self._kernel = ElementwiseKernel(headstr.format(type_t),
             ("y[i] = fmax(x[i] + {0}f1[i], "\
                     + "fmin(x[i] + {0}f2[i], "\
                         + "alpha[i]*x[i]))/alpha[i]").format(taufact))

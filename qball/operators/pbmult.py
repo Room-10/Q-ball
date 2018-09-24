@@ -14,7 +14,7 @@ except:
     # no cuda support
     pass
 
-def pbmult_prepare_gpu(P, B, y):
+def pbmult_prepare_gpu(P, B, y, type_t="double"):
     J = B.shape[0]
     K = y[0]['shape'][1]
     L = B.shape[2]
@@ -22,7 +22,7 @@ def pbmult_prepare_gpu(P, B, y):
     N = y[0]['shape'][0]
     constvars = {
         'J': J, 'K': K, 'L': L, 'M': M, 'N': N,
-        'P': P, 'B': B
+        'P': P, 'B': B, 'TYPE_T': type_t
     }
     files = [resource_stream('qball.operators', 'pbmult.cu')]
     templates = [
@@ -61,10 +61,10 @@ class PBMult(LinOp):
             self.adjoint = adjoint
         self._kernel = None
 
-    def prepare_gpu(self, kernels=None):
+    def prepare_gpu(self, kernels=None, type_t="double"):
         if self._kernel is not None: return
         if kernels is None:
-            kernels = pbmult_prepare_gpu(self.P, self.B, self.y)
+            kernels = pbmult_prepare_gpu(self.P, self.B, self.y, type_t="double")
         self._kernel = kernels['pbmult']
         self.adjoint.prepare_gpu(kernels)
 
@@ -101,10 +101,10 @@ class BPMult(LinOp):
             self.adjoint = adjoint
         self._kernel = None
 
-    def prepare_gpu(self, kernels=None):
+    def prepare_gpu(self, kernels=None, type_t="double"):
         if self._kernel is not None: return
         if kernels is None:
-            kernels = pbmult_prepare_gpu(self.P, self.B, self.x)
+            kernels = pbmult_prepare_gpu(self.P, self.B, self.x, type_t="double")
         self._kernel = kernels['bpmult']
         self.adjoint.prepare_gpu(kernels)
 

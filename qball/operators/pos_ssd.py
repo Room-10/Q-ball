@@ -89,7 +89,7 @@ class PosShiftScaleOp(Operator):
         self.x = Variable(N)
         self.y = Variable(N)
 
-    def prepare_gpu(self):
+    def prepare_gpu(self, type_t="double"):
         # don't multiply with a if a is 1 (not 1.0!)
         afact = "" if self.a is 1 else "a[0]*"
         if type(self.a) is np.ndarray:
@@ -106,12 +106,13 @@ class PosShiftScaleOp(Operator):
         if self.shift is 0 or self.b is 0:
             shiftstr = ""
 
+        np_dtype = np.float64 if type_t == "double" else np.float32
         self.gpuvars = {
-            'shift':    gpuarray.to_gpu(np.asarray(self.shift, dtype=np.float64)),
-            'a':        gpuarray.to_gpu(np.asarray(self.a, dtype=np.float64)),
-            'b':        gpuarray.to_gpu(np.asarray(self.b, dtype=np.float64))
+            'shift':    gpuarray.to_gpu(np.asarray(self.shift, dtype=np_dtype)),
+            'a':        gpuarray.to_gpu(np.asarray(self.a, dtype=np_dtype)),
+            'b':        gpuarray.to_gpu(np.asarray(self.b, dtype=np_dtype))
         }
-        headstr = "double *x, double *y, double *shift, double *a, double *b"
+        headstr = "{0} *x, {0} *y, {0} *shift, {0} *a, {0} *b".format(type_t)
         self._kernel = ElementwiseKernel(headstr,
             "y[i] = fmax(0.0, %s(x[i]%s))" % (afact, shiftstr))
         self._kernel_add = ElementwiseKernel(headstr,
