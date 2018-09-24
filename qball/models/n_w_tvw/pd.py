@@ -1,6 +1,5 @@
 
 from qball.tools import normalize_odf
-from qball.tools.blocks import BlockVar
 from qball.models.base import ModelHARDI
 from qball.operators.pbmult import PBMult
 from qball.operators.pos_ssd import PosSSD
@@ -9,6 +8,7 @@ import numpy as np
 
 import logging
 
+from opymize import BlockVar
 from opymize.functionals import SplitSum, PositivityFct, ZeroFct, \
                                 IndicatorFct, AffineFct, L1Norms, ConstrainFct
 from opymize.linear import BlockOp, ScaleOp, GradientOp, \

@@ -12,7 +12,8 @@ import logging, warnings
 warnings.simplefilter('ignore', UserWarning)
 
 import qball.util as util
-from qball.tools.blocks import BlockVar
+
+from opymize import BlockVar
 
 def prepare_kernels(files, templates, itervars, constvars, blockvars):
     """ Compile and prepare CUDA kernel functions

@@ -1,5 +1,4 @@
 
-from qball.tools.blocks import BlockVar
 from qball.models.base import ModelHARDI_SHM
 from qball.tools.shm import sym_shm_sample_grad
 
@@ -7,6 +6,7 @@ import numpy as np
 
 import logging
 
+from opymize import BlockVar
 from opymize.functionals import SplitSum, SSD, PositivityFct, \
                                 ZeroFct, IndicatorFct, L1Norms
 from opymize.linear import BlockOp, ScaleOp, GradientOp, \

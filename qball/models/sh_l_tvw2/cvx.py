@@ -1,5 +1,4 @@
 
-from qball.tools.blocks import BlockVar
 from qball.tools.cvx import cvxVariable, sparse_div_op, cvxOp
 from qball.tools.shm import sym_shm_sample_grad
 
@@ -7,6 +6,8 @@ import numpy as np
 import cvxpy as cvx
 
 import logging
+
+from opymize import BlockVar
 
 def fit_hardi_qball(data, model_params, solver_params={}):
     sampling_matrix = model_params['sampling_matrix']
