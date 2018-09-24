@@ -2,7 +2,6 @@
 from qball.models.base import ModelHARDI_SHM
 from qball.tools.bounds import compute_hardi_bounds
 from qball.operators.bndl2 import BndSSD
-from qball.operators.pbmult import PBMult
 
 import numpy as np
 
@@ -11,7 +10,7 @@ import logging
 from opymize import BlockVar
 from opymize.functionals import SplitSum, SSD, PositivityFct, \
                                 ZeroFct, IndicatorFct, L1Norms
-from opymize.linear import BlockOp, ScaleOp, GradientOp, \
+from opymize.linear import BlockOp, ScaleOp, GradientOp, IndexedMultAdj, \
                            MatrixMultR, MatrixMultRBatched
 
 def fit_hardi_qball(data, model_params, solver_params):
@@ -76,7 +75,7 @@ class MyModel(ModelHARDI_SHM):
 
         GradOp = GradientOp(imagedims, l_labels, weights=e['b_sph'].b)
 
-        PBLinOp = PBMult(l_labels, d_image*n_image, e['b_sph'].P, e['b_sph'].B)
+        PBLinOp = IndexedMultAdj(l_labels, d_image*n_image, e['b_sph'].P, e['b_sph'].B)
         AMult = MatrixMultRBatched(n_image*d_image, e['b_sph'].A)
 
         bMult = MatrixMultR(n_image, e['b_sph'].b_precond*e['b_sph'].b[:,None])

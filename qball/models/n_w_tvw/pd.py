@@ -1,7 +1,6 @@
 
 from qball.tools import normalize_odf
 from qball.models.base import ModelHARDI
-from qball.operators.pbmult import PBMult
 from qball.operators.pos_ssd import PosSSD
 
 import numpy as np
@@ -11,7 +10,7 @@ import logging
 from opymize import BlockVar
 from opymize.functionals import SplitSum, PositivityFct, ZeroFct, \
                                 IndicatorFct, AffineFct, L1Norms, ConstrainFct
-from opymize.linear import BlockOp, ScaleOp, GradientOp, \
+from opymize.linear import BlockOp, ScaleOp, GradientOp, IndexedMultAdj, \
                            MatrixMultR, MatrixMultRBatched, DiagMatrixMultR
 
 def qball_regularization(data, model_params, solver_params):
@@ -66,7 +65,7 @@ class MyPDHGModel(ModelHARDI):
 
         GradOp = GradientOp(imagedims, l_labels, weights=e['b_sph'].b)
 
-        PBLinOp = PBMult(l_labels, d_image*n_image, e['b_sph'].P, e['b_sph'].B)
+        PBLinOp = IndexedMultAdj(l_labels, d_image*n_image, e['b_sph'].P, e['b_sph'].B)
         AMult = MatrixMultRBatched(n_image*d_image, e['b_sph'].A)
 
         bMult = MatrixMultR(n_image, e['b_sph'].b_precond*e['b_sph'].b[:,None])
@@ -84,7 +83,7 @@ class MyPDHGModel(ModelHARDI):
                 ZeroFct(N_w0),      # 0
             ])
 
-            PBLinOp0 = PBMult(l_labels, n_image, e['b_sph'].P, e['b_sph'].B)
+            PBLinOp0 = IndexedMultAdj(l_labels, n_image, e['b_sph'].P, e['b_sph'].B)
             AMult0 = MatrixMultRBatched(n_image, e['b_sph'].A)
             bMult0 = DiagMatrixMultR(n_image, e['b_sph'].b)
 
