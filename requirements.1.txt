@@ -33,3 +33,4 @@ six==1.11.0
 toolz==0.9.0
 wheel==0.30.0
 git+https://github.com/room-10/Opymize
+git+https://github.com/room-10/Repyducible

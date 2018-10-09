@@ -31,7 +31,7 @@ for output_dir in sys.argv[1:]:
 
     dists_npz = np.load(open(dists_file, 'rb'))
     data = pickle.load(open(data_file, 'rb'))
-    S_data = data['raw'][data['slice']]
+    S_data = data.raw[data.slice]
     imagedims = S_data.shape[:-1]
 
     fig = plt.figure()

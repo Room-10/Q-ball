@@ -9,16 +9,13 @@ def cvxVariable(*args):
     Args:
         args : list of integers (dimensions)
     Returns:
-        A multidimensional variable (using python dictionaries if more than two
+        A multidimensional variable (using python lists if more than two
         dimensions are needed)
     """
     if len(args) <= 2:
-        return cvx.Variable(*args)
+        return cvx.Variable(args)
     else:
-        var = {}
-        for i in range(args[0]):
-            var[i] = cvxVariable(*args[1:])
-        return var
+        return list([cvxVariable(*args[1:]) for i in range(args[0])])
 
 def sparse_div_op(dims):
     """ Sparse linear operator for divergence with dirichlet boundary

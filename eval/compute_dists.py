@@ -24,7 +24,7 @@ def l2_dist(f1, f2, b_sph):
 def load_b_sph(output_dir):
     data_file = os.path.join(output_dir, 'data.pickle')
     data = pickle.load(open(data_file, 'rb'))
-    gtab = data['gtab']
+    gtab = data.gtab
     b_vecs = gtab.bvecs[gtab.bvals > 0,...]
     return load_sphere(vecs=b_vecs.T)
 
@@ -34,12 +34,12 @@ def reconst_f(output_dir, b_sph=None):
 
     baseparams = pickle.load(open(params_file, 'rb'))
     data = pickle.load(open(data_file, 'rb'))
-    gtab = data['gtab']
-    S_data = data['raw'][data['slice']]
+    gtab = data.gtab
+    S_data = data.raw[data.slice]
 
     S_data_list = [S_data]
-    if 'ground-truth' in data:
-        S_data_list.append(data['ground-truth'][data['slice']])
+    if hasattr(data, 'ground_truth'):
+        S_data_list.append(data.ground_truth[data.slice])
 
     l_labels = np.sum(gtab.bvals > 0)
     imagedims = S_data.shape[:-1]

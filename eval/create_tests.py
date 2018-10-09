@@ -15,19 +15,12 @@ lbd_step = parsed_args.lbd_step
 count = parsed_args.count
 
 params = {
-    'base': {
-        'sh_order': 6,
-        'smooth': 0,
-        'min_signal': 0,
-        'assume_normed': True,
+    'solver_name': 'pdhg',
+    'solver': {
+        'step_factor': 0.01,
+        'step_bound': 0.0014,
     },
-    'fit': {
-        'solver_engine': 'pd',
-        'solver_params': {
-            'step_factor': 0.01,
-            'step_bound': 0.0014,
-        },
-    },
+    'model': {}
 }
 
 for i in range(count):
@@ -35,5 +28,5 @@ for i in range(count):
     output_dir = "%s-%.4f" % (datadir, lbd)
     shutil.copytree(datadir, output_dir)
     params_file = os.path.join(output_dir, 'params.pickle')
-    params['fit']['solver_params']['lbd'] = lbd
+    params['model']['lbd'] = lbd
     pickle.dump(params, open(params_file, 'wb'))

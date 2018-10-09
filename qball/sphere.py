@@ -4,11 +4,11 @@ from __future__ import division
 from qball.tools.plot import plot_mesh3
 from qball.tools.norm import normalize
 from qball.tools.mean import manifold_mean
-from qball.util import output_dir_create
 
 import pickle
 import numpy as np
 from scipy.spatial import SphericalVoronoi
+from repyducible.util import output_dir_create
 
 import logging
 

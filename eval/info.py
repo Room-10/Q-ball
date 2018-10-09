@@ -7,7 +7,6 @@ try:
 except:
     import set_qball_path
 from qball.sphere import load_sphere
-from qball.tools.bounds import compute_hardi_bounds
 
 from compute_dists import reconst_f
 
@@ -68,22 +67,22 @@ def print_bounds(output_dir):
     data = pickle.load(open(data_file, 'rb'))
     result = pickle.load(open(result_file, 'rb'))[0]
 
-    gtab = data['gtab']
-    S_data = data['raw'][data['slice']]
+    gtab = data.gtab
+    S_data = data.raw[data.slice]
     upd = result['u2']
     b_vecs = gtab.bvecs[gtab.bvals > 0,...]
-    b_sph = load_sphere(vecs=b_vecs.T)
-    data['b_sph'] = b_sph
+    b_sph = data.b_sph
     try:
-        conf_lvl = params['fit']['model_params']['conf_lvl']
+        conf_lvl = params['model']['conf_lvl']
     except:
-        if 'bounds' in data:
-            conf_lvl = data['bounds'][0]
+        if data.bounds is not None:
+            conf_lvl = data.bounds_alpha
         else:
             conf_lvl = float(input("conf_lvl: "))
 
-    compute_hardi_bounds(data, conf_lvl, mask=cross_mask)
-    _, fl, fu = data['bounds']
+    if data.bounds is None or data.bounds_alpha != conf_lvl:
+        data.init_bounds(conf_lvl, mask=cross_mask)
+    fl, fu = data.bounds
 
     interv_sizes = fu-fl
     print("Range: %.2f ... %.2f" % (np.amin(fl),np.amax(fu)))

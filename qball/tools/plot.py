@@ -7,14 +7,14 @@ from dipy.viz import fvtk
 
 import dipy.reconst.dti as dti
 
-def plot_as_odf(imgdata, params, qball_sphere, output_dir):
+def plot_as_odf(imgdata, params, dipy_sph, output_dir):
     for img, name in imgdata:
         for i,s in enumerate(params['records']):
             fname = os.path.join(output_dir, "plot-%s-%d.png" % (name,i))
-            r = prepare_odfplot(img, params, qball_sphere, p_slice=s)
+            r = prepare_odfplot(img, params, dipy_sph, p_slice=s)
             fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname=fname)
 
-def prepare_odfplot(data, params, qball_sphere, p_slice=None):
+def prepare_odfplot(data, params, dipy_sph, p_slice=None):
     p_slice = params['slice'] if p_slice is None else p_slice
     data = (data,) if type(data) is np.ndarray else data
 
@@ -37,13 +37,13 @@ def prepare_odfplot(data, params, qball_sphere, p_slice=None):
 
     plotdata = np.concatenate(stack, axis=stack_ax)
     r = fvtk.ren()
-    r_data = fvtk.sphere_funcs(plotdata, qball_sphere, colormap='jet',
+    r_data = fvtk.sphere_funcs(plotdata, dipy_sph, colormap='jet',
                                norm=params['norm'], scale=params['scale'])
     fvtk.add(r, r_data)
     r.set_camera(**camera_params)
     return r
 
-def plot_as_dti(gtab, data, params, qball_sphere, output_dir="."):
+def plot_as_dti(gtab, data, params, dipy_sph, output_dir="."):
     logging.info("Fitting data to DTI model...")
     tenmodel = dti.TensorModel(gtab)
     tenfit = tenmodel.fit(data[params['slice']])
@@ -58,7 +58,7 @@ def plot_as_dti(gtab, data, params, qball_sphere, output_dir="."):
     camera_params, long_ax, view_ax, stack_ax = \
         prepare_plot_camera(data[params['slice']].shape[:-1], scale=2.2)
     r = fvtk.ren()
-    fvtk.add(r, fvtk.tensor(tenfit.evals, tenfit.evecs, cfa, qball_sphere))
+    fvtk.add(r, fvtk.tensor(tenfit.evals, tenfit.evecs, cfa, dipy_sph))
     r.set_camera(**camera_params)
     fname = os.path.join(output_dir, "plot-dti-0.png")
     fvtk.snapshot(r, size=(1500,1500), offscreen=True, fname=fname)

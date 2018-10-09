@@ -1,5 +1,6 @@
 
 import os, sys, logging, pickle
+from repyducible.util import output_dir_create
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,7 +14,6 @@ try:
 except:
     import set_qball_path
 
-import qball.util
 from qball.tools.w1dist import w1_dist
 from qball.sphere import load_sphere
 from qball.tools import normalize_odf
@@ -73,7 +73,7 @@ dists_file = os.path.join(output_dir, "dists.npz")
 dists_csv_file = os.path.join(output_dir, "dists.csv")
 plots_file = os.path.join(output_dir, "lp-w1-result.pdf")
 odfplot_file = os.path.join(output_dir, "lp-w1-data.png")
-qball.util.output_dir_create(output_dir)
+output_dir_create(output_dir)
 
 try:
     npzfile = np.load(open(dists_file, 'rb'))

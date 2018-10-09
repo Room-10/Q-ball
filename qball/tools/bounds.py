@@ -180,52 +180,52 @@ def compute_hardi_bounds(data, alpha, mask=None):
     """ Compute fidelity bounds for (subdomain) of HARDI signal `data`.
 
     Args:
-        data : dict, data description
-            data['raw'] : numpy array of shape (B,X,Y,Z,L)
+        data : QBallData, data description
+            data.raw : numpy array of shape (B,X,Y,Z,L)
                 three-dim. (B-batch of) HARDI signals with L b-vectors
-            data['slice'] : indexing into (X,Y,Z) of raw data
+            data.slice : indexing into (X,Y,Z) of raw data
                 bounds are only computed for this slice
-            data['b_sph'] : Sphere object from b-vectors
+            data.b_sph : Sphere object from b-vectors
         alpha : confidence level
         mask : numpy array of shape (X,Y,Z)
             foreground mask, containing only 1s and 0s
 
     Returns:
-        nothing, sets data['bounds'] to (alpha, fl, fu), where
+        nothing, sets data.bounds to (alpha, fl, fu), where
         fl, fu : numpy arrays of shape (L,N)
             lower and upper bounds for averaged log(-log(data))
             the image dimensions are raveled
     """
-    if 'bounds' in data and data['bounds'][0] == alpha:
+    if data.bounds is not None and data.bounds_alpha == alpha:
         return
 
-    data_raw = np.array(data['raw'], dtype=np.float64)
+    data_raw = np.array(data.raw, dtype=np.float64)
     if len(data_raw.shape) < 5:
         data_raw = data_raw[None]
-    where_b0 = (data['gtab'].bvals == 0)
-    where_dwi = (data['gtab'].bvals > 0)
+    where_b0 = (data.gtab.bvals == 0)
+    where_dwi = (data.gtab.bvals > 0)
 
     # scale data to [0.0,0.8] (restored after parameter estimation)
     scaling_factor = np.amax(data_raw.ravel())/0.8
     data_raw /= scaling_factor
 
     b_batch = data_raw.shape[0]
-    l_labels = data['b_sph'].mdims['l_labels']
+    l_labels = data.b_sph.mdims['l_labels']
 
     if mask is None:
         # automatically estimate foreground from histogram thresholding (Otsu)
         mask = np.mean(data_raw[...,where_dwi], axis=(0,-1))
         thresh = otsu(mask)
         mask = (mask <= thresh)
-        if len(mask[data['slice']].shape) == 2:
-            logging.debug("\n%s" % matrix2brl(mask[data['slice']].astype(int)))
+        if len(mask[data.slice].shape) == 2:
+            logging.debug("\n%s" % matrix2brl(mask[data.slice].astype(int)))
     mask = np.tile(mask, (1,1,1,data_raw.shape[-1])).ravel()
     sigma = rice_sigma_mle(data_raw.reshape(b_batch,-1), mask)
     logging.info('Rescaled sigma=%.5f.', sigma*scaling_factor)
 
     logging.info('Computing confidence intervals with confidence level %.3f'
         ' from batch of size %d...', alpha, b_batch)
-    data_sliced = data_raw[(slice(None),) + data['slice']]
+    data_sliced = data_raw[(slice(None),) + data.slice]
     imagedims = data_sliced.shape[1:-1]
     n_image = np.prod(imagedims)
     data_flat = data_sliced.reshape(b_batch,-1)
@@ -238,7 +238,7 @@ def compute_hardi_bounds(data, alpha, mask=None):
     data_u = scaling_factor*data_u.reshape(data_sliced.shape)
 
     # normalize data according to b0-image
-    if not data['normed']:
+    if not data.normed:
         data_l.clip(1.0, out=data_l)
         data_u.clip(1.0, out=data_u)
         b0_l = data_l[...,where_b0].mean(-1)
@@ -261,9 +261,9 @@ def compute_hardi_bounds(data, alpha, mask=None):
     assert((fl <= fu).all())
 
     # subtract mean
-    fl_mean = np.einsum('ki,k->i', fl, data['b_sph'].b)/(4*np.pi)
-    fu_mean = np.einsum('ki,k->i', fu, data['b_sph'].b)/(4*np.pi)
+    fl_mean = np.einsum('ki,k->i', fl, data.b_sph.b)/(4*np.pi)
+    fu_mean = np.einsum('ki,k->i', fu, data.b_sph.b)/(4*np.pi)
     fu -= fl_mean
     fl -= fu_mean
 
-    data['bounds'] = (alpha, fl, fu)
+    data.bounds = (alpha, fl, fu)

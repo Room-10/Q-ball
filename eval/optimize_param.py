@@ -20,7 +20,6 @@ class ParamOptimizer(object):
         else:
             exp_args = [self.model, '--plot','no']
             exp = self.experiment(exp_args)
-            exp.load_imagedata()
             self.basedir = exp.output_dir
         self.dist = dist
         self.distname = self.dist.__name__.replace("_dist","")

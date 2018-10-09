@@ -45,9 +45,8 @@ class AlphaOptimizer(ParamOptimizer):
 
         data_file = os.path.join(output_dir, 'data.pickle')
         data = pickle.load(open(data_file, 'rb'))
-        if 'bounds' not in data or data['bounds'][0] != 1.0-alpha:
-            from qball.tools.bounds import compute_hardi_bounds
-            compute_hardi_bounds(data, alpha=1.0-alpha)
+        if data.bounds is None or data.bounds_alpha != 1.0-alpha:
+            data.init_bounds(1.0-alpha)
             pickle.dump(data, open(data_file, 'wb'))
 
         exp_params = ['conf_lvl=%f' % (1.0-alpha), self.params[1]]
@@ -98,7 +97,7 @@ if __name__ == "__main__":
     basedir = None if parsed_args.basedir == "" else parsed_args.basedir
     logging.info("==> Optimizing alpha for dist '%s' and basedir '%s'..." % \
           (parsed_args.dist, basedir))
-    opt = AlphaOptimizer(exp.MyExperiment, parsed_args.model, basedir=basedir,
+    opt = AlphaOptimizer(exp.Experiment, parsed_args.model, basedir=basedir,
                          dist=distfun, resume=parsed_args.resume,
                          redist=parsed_args.redist, cvx=parsed_args.cvx,
                          params=(parsed_args.model_params, parsed_args.solver_params))
