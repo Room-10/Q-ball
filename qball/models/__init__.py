@@ -9,7 +9,6 @@ from scipy.special import lpn
 from repyducible.model import PDBaseModel
 
 from qball.tools import clip_hardi_data
-from qball.tools.diff import staggered_diff_avgskips
 
 class ModelHARDI(PDBaseModel):
     "Base class for HARDI reconstruction models."
@@ -39,7 +38,6 @@ class ModelHARDI(PDBaseModel):
 
         c = self.constvars
 
-        c['avgskips'] = staggered_diff_avgskips(imagedims)
         c['lbd'] = lbd
         c['b'] = b_sph.b
         c['A'] = b_sph.A

@@ -1,7 +1,7 @@
 
 import numpy as np
 import cvxpy as cvx
-from qball.tools.diff import staggered_diff_avgskips
+from opymize.linear.diff import staggered_diff_avgskips, imagedim_skips
 
 def cvxVariable(*args):
     """ Create a multidimensional CVXPY variable
@@ -28,21 +28,17 @@ def sparse_div_op(dims):
     d_image = len(dims)
     n_image = np.prod(dims)
     avgskips = staggered_diff_avgskips(dims)
+    skips = imagedim_skips(dims)
     navgskips =  1 << (d_image - 1)
-
-    skips = (1,)
-    for t in range(1,d_image):
-        skips += (skips[-1]*dims[d_image-t],)
-
-    op = [[] for i in range(n_image)]
     coords = np.zeros(d_image, dtype=np.int64)
 
+    op = [[] for i in range(n_image)]
     for t in range(d_image):
-        coords *= 0
+        coords.fill(0)
         for i in range(n_image):
             # ignore boundary points
             in_range = True
-            for dc in reversed(range(d_image)):
+            for dc in range(d_image-1,-1,-1):
                 if coords[dc] >= dims[dc] - 1:
                     in_range = False
                     break
@@ -54,13 +50,12 @@ def sparse_div_op(dims):
                     op[base].append(((t,i), 1.0/navgskips))
 
             # advance coordinates
-            for dd in reversed(range(d_image)):
+            for dd in range(d_image-1,-1,-1):
                 coords[dd] += 1
                 if coords[dd] >= dims[dd]:
                     coords[dd] = 0
                 else:
                     break
-
     return op
 
 def cvxOp(A, x, i):
